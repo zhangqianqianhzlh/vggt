@@ -1,0 +1,79 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vggt"
+version = "0.0.1"
+description = "Visual Geometry Grounded Transformer (VGGT): A feed-forward neural network for 3D scene reconstruction"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {file = "LICENSE.txt"}
+authors = [
+    {name = "Meta AI Research", email = "research@meta.com"}
+]
+maintainers = [
+    {name = "Jianyuan Wang"}
+]
+keywords = ["computer-vision", "deep-learning", "3d-reconstruction", "sfm", "pytorch"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "torch>=2.0.0",
+    "torchvision>=0.15.0",
+    "numpy>=1.22.0",
+    "Pillow",
+    "huggingface_hub",
+    "einops",
+    "safetensors",
+]
+
+[project.optional-dependencies]
+demo = [
+    "gradio>=5.0.0",
+    "viser>=0.2.0",
+    "tqdm",
+    "hydra-core",
+    "omegaconf",
+    "opencv-python",
+    "scipy",
+    "onnxruntime",
+    "requests",
+    "trimesh",
+    "matplotlib",
+]
+dev = [
+    "pytest",
+    "black",
+    "isort",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/facebookresearch/vggt"
+"Bug Tracker" = "https://github.com/facebookresearch/vggt/issues"
+"Documentation" = "https://github.com/facebookresearch/vggt/blob/main/README.md"
+"Source Code" = "https://github.com/facebookresearch/vggt"
+
+[tool.setuptools]
+packages = ["vggt", "vggt.models", "vggt.utils", "vggt.layers", "vggt.heads"]
+
+[tool.setuptools.package-data]
+vggt = ["py.typed"]
+
+# Development configurations
+[tool.black]
+line-length = 100
+target-version = ["py38"]
+
+[tool.isort]
+profile = "black"
+line_length = 100 

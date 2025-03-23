@@ -38,6 +38,11 @@ cd vggt
 pip install -r requirements.txt
 ```
 
+Alternatively, you can install VGGT directly via pip:
+
+```bash
+pip install vggt
+```
 
 Now, try the model with just a few lines of code:
 

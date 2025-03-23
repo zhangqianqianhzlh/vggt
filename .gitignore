@@ -144,3 +144,13 @@ dmypy.json
 **/tmp/
 **/outputs/skyseg.onnx
 skyseg.onnx
+
+# Python package distribution / packaging
+*.egg-info/
+*.egg
+
+# Ignore all files in the data directory
+data/*
+
+# Ignore all files in the logs directory
+logs/*
