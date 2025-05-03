@@ -2,15 +2,7 @@
 
 
 """
-Script to pre-process camera poses and bounding boxes for CO3Dv2 dataset. This is
-important because computing the bounding boxes from the masks is a significant
-bottleneck.
-
-First, you should pre-compute the bounding boxes since this takes a long time.
-
 Usage:
-    python -m preprocess.preprocess_co3d --category all --precompute_bbox \
-        --co3d_v2_dir /path/to/co3d_v2
     python -m preprocess.preprocess_co3d --category all \
         --co3d_v2_dir /path/to/co3d_v2
 """
@@ -50,7 +42,6 @@ def get_parser():
         default=0.5,
         help="Minimum viewpoint quality score.",
     )
-    parser.add_argument("--precompute_bbox", action="store_true")
     return parser
 
 
@@ -98,7 +89,7 @@ def process_poses(co3d_dir, category, output_dir, min_quality):
             if seq_name not in category_data:
                 category_data[seq_name] = []
 
-            mask_path = filepath.replace("images", "masks").replace(".jpg", ".png")
+            # mask_path = filepath.replace("images", "masks").replace(".jpg", ".png")
             # bbox = bbox_data[mask_path]
             # if bbox == []:
                 # Mask did not include any object.
@@ -129,18 +120,10 @@ if __name__ == "__main__":
         categories = CATEGORIES
     else:
         categories = [args.category]
-    if args.precompute_bbox:
-        for category in categories:
-            precompute_bbox(
-                co3d_dir=args.co3d_v2_dir,
-                category=category,
-                output_dir=args.output_dir,
-            )
-    else:
-        for category in categories:
-            process_poses(
-                co3d_dir=args.co3d_v2_dir,
-                category=category,
-                output_dir=args.output_dir,
-                min_quality=args.min_quality,
-            )
+    for category in categories:
+        process_poses(
+            co3d_dir=args.co3d_v2_dir,
+            category=category,
+            output_dir=args.output_dir,
+            min_quality=args.min_quality,
+        )

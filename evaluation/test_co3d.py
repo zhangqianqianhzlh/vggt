@@ -180,7 +180,7 @@ def se3_to_relative_pose_error(pred_se3, gt_se3, num_frames):
 # TODO: test below
 
 # 1. how much would bf16 and tf32 affect the tracking results?
-# 2. use np instead of torch for computing auc
+# 2. use np instead of torch for computing auc to avoid the numerical instability
 
 
 
@@ -313,7 +313,7 @@ for category in SEEN_CATEGORIES:
             # Convert pose encoding to extrinsic and intrinsic matrices
             print("Converting pose encoding to extrinsic and intrinsic matrices...")
 
-            # TODO: write the BA code here
+            # TODO: add the BA code here
 
 
 

@@ -1,19 +1,46 @@
-This repository currently contains the code to reproduce the results of VGGT (feedforward) on Co3D dataset.
+# VGGT Evaluation
 
-## Camera pose estimation on Co3D
+This repository contains code to reproduce the evaluation results of VGGT.
 
-First download Co3D from the official website https://github.com/facebookresearch/co3d
+## Table of Contents
 
-Then proprocess the Co3D dataset (which should take around 5 minutes)
+- [Camera Pose Estimation on Co3D](#camera-pose-estimation-on-co3d)
+  - [Dataset Preparation](#dataset-preparation)
+  - [Running the Evaluation](#running-the-evaluation)
+  - [Expected Results](#expected-results)
+- [Checklist](#checklist)
+
+## Camera Pose Estimation on Co3D
+
+### Dataset Preparation
+
+1. Download the Co3D dataset from the [official repository](https://github.com/facebookresearch/co3d)
+
+2. Preprocess the Co3D dataset (takes approximately 5 minutes):
+
+   ```bash
+   python preprocess_co3d.py --category all --co3d_v2_dir /YOUR/CO3D/PATH --output_dir /YOUR/CO3D/ANNO/PATH
+   ```
+
+   Replace `/YOUR/CO3D/PATH` with the path to your downloaded Co3D dataset, and `/YOUR/CO3D/ANNO/PATH` with the desired output directory for the processed annotations.
+
+### Running the Evaluation
+
+1. Update the Co3D paths in `test_co3d.py`:
+   - Set `CO3D_DIR` to your Co3D dataset directory
+   - Set `CO3D_ANNOTATION_DIR` to your processed annotations directory
+
+2. Run the evaluation script:
+
+   ```bash
+   python test_co3d.py
+   ```
+
+### Expected Results
+
+After the evaluation completes, you should see results similar to:
 
 ```
-python preprocess_co3d.py --category all --co3d_v2_dir /YOUR/CO3D/PATH --output_dir /YOUR/CO3D/ANNO/PATH
-```
-
-
-Update your  /YOUR/CO3D/PATH and  /YOUR/CO3D/ANNO/PATH in test_co3d.py and run it, you will get results like:
-
-
 AUC of apple test set: 0.910711111111111
 AUC of backpack test set: 0.9273721340388009
 AUC of banana test set: 0.877037037037037
@@ -59,14 +86,19 @@ AUC of wineglass test set: 0.8819363222871994
 ****************************************************************************************************
 
 Mean AUC: 0.8975667260043426
+```
 
-Although this evaluation code is not exactly the same to our internal one, the result AUC@30=89.8% is slightly better than our reported number in paper AUC@30=88.2.
-
-
+Note that this evaluation implementation may differ slightly from the internal one used for the paper, while our reported AUC@30 value is 89.8%, which is slightly better than the value of 88.2% reported in the paper.
 
 ## Checklist
 
-- [\tick] Camera pose estimation code on Co3D
-- [ ] VGGT+BA for Co3D
-- [ ] Evaluation for Re10K and IMC
-- [ ] Evaluation for
+The following features are planned for future releases:
+
+- [x] Camera pose estimation code on Co3D
+- [ ] VGGT+BA (Bundle Adjustment) on Co3D
+- [ ] Evaluation on Re10K dataset
+- [ ] Evaluation on IMC dataset
+- [ ] Evaluation of multi-view depth estimation
+
+---
+
