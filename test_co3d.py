@@ -317,7 +317,16 @@ def process_sequence(model, seq_name, seq_data, category, co3d_dir, min_num_imag
     images = load_and_preprocess_images(image_names).to(device)
 
     if use_ba:
-        pred_extrinsic = run_vggt_with_ba(model, images, image_names=image_names, dtype=dtype)
+        try:
+            pred_extrinsic = run_vggt_with_ba(model, images, image_names=image_names, dtype=dtype)
+        except Exception as e:
+            print(f"BA failed with error: {e}. Falling back to standard VGGT inference.")
+            with torch.no_grad():
+                with torch.cuda.amp.autocast(dtype=dtype):
+                    predictions = model(images)
+            with torch.cuda.amp.autocast(dtype=torch.float64):
+                extrinsic, intrinsic = pose_encoding_to_extri_intri(predictions["pose_enc"], images.shape[-2:])
+                pred_extrinsic = extrinsic[0]
     else:
         with torch.no_grad():
             with torch.cuda.amp.autocast(dtype=dtype):
