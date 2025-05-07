@@ -261,7 +261,7 @@ def extract_keypoints(query_image, extractors, max_query_num):
 def run_vggt_with_ba(model, images, image_names=None, dtype=torch.bfloat16,
                      max_query_num=2048, det_thres=0.005, query_frame_num=3,
                      extractor_method="aliked+sp+sift",
-                     max_reproj_error=4,
+                     max_reproj_error=12,
                      shared_camera=True,
                      camera_type="SIMPLE_PINHOLE",
                      ):

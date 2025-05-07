@@ -212,14 +212,14 @@ def setup_args():
     return parser.parse_args()
 
 
-def load_model(device, dtype):
+def load_model(device):
     """
     Load the VGGT model.
-    
+
     Args:
         device: Device to load the model on
         dtype: Data type for model inference
-        
+
     Returns:
         Loaded VGGT model
     """
@@ -336,7 +336,7 @@ def main():
     dtype = torch.bfloat16 if torch.cuda.is_available() and torch.cuda.get_device_capability()[0] >= 8 else torch.float16
 
     # Load model
-    model = load_model(device, dtype)
+    model = load_model(device)
 
     # Set random seeds
     set_random_seeds(args.seed)
@@ -418,7 +418,7 @@ def main():
         BLUE = "\033[94m"
         BOLD = "\033[1m"
         RESET = "\033[0m"
-        
+
         print(f"{BOLD}{BLUE}AUC of {category} test set:{RESET} {GREEN}{Auc_30:.4f} (AUC@30), {Auc_15:.4f} (AUC@15), {Auc_5:.4f} (AUC@5), {Auc_3:.4f} (AUC@3){RESET}")
         mean_AUC_30_by_now = np.mean([per_category_results[category]["Auc_30"] for category in per_category_results])
         mean_AUC_15_by_now = np.mean([per_category_results[category]["Auc_15"] for category in per_category_results])

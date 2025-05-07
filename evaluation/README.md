@@ -26,6 +26,8 @@ This repository contains code to reproduce the evaluation results of VGGT.
 
 ### Running the Evaluation
 
+0. Install vggt as a package, pip install -e .
+
 1. Update the Co3D paths in `test_co3d.py`:
    - Set `CO3D_DIR` to your Co3D dataset directory
    - Set `CO3D_ANNOTATION_DIR` to your processed annotations directory
@@ -41,51 +43,49 @@ This repository contains code to reproduce the evaluation results of VGGT.
 After the evaluation completes, you should see results similar to:
 
 ```
-AUC of apple test set: 0.910711111111111
-AUC of backpack test set: 0.9273721340388009
-AUC of banana test set: 0.877037037037037
-AUC of baseballbat test set: 0.8273544973544971
-AUC of baseballglove test set: 0.860888888888889
-AUC of bench test set: 0.9729037037037036
-AUC of bicycle test set: 0.9424296296296296
-AUC of bottle test set: 0.9137925925925926
-AUC of bowl test set: 0.8927635327635328
-AUC of broccoli test set: 0.8995987654320988
-AUC of cake test set: 0.8799012345679013
-AUC of car test set: 0.9006042884990255
-AUC of carrot test set: 0.8702495974235104
-AUC of cellphone test set: 0.7632740740740741
-AUC of chair test set: 0.9613963388676036
-AUC of cup test set: 0.8436296296296296
-AUC of donut test set: 0.9254222222222225
-AUC of hairdryer test set: 0.9327739984882844
-AUC of handbag test set: 0.9097470641373081
-AUC of hydrant test set: 0.9602814814814816
-AUC of keyboard test set: 0.8423816221284578
-AUC of laptop test set: 0.8724400871459694
-AUC of microwave test set: 0.8678814814814813
-AUC of motorcycle test set: 0.9686074074074076
-AUC of mouse test set: 0.9119727891156462
-AUC of orange test set: 0.8842222222222224
-AUC of parkingmeter test set: 0.9535802469135802
-AUC of pizza test set: 0.8480776014109348
-AUC of plant test set: 0.9539009139009138
-AUC of stopsign test set: 0.8870445956160243
-AUC of teddybear test set: 0.9355314009661838
-AUC of toaster test set: 0.9593037037037035
-AUC of toilet test set: 0.8095785440613028
-AUC of toybus test set: 0.9063247863247862
-AUC of toyplane test set: 0.8142260208926876
-AUC of toytrain test set: 0.8369444444444443
-AUC of toytruck test set: 0.8628368794326243
-AUC of tv test set: 0.9395061728395063
-AUC of umbrella test set: 0.9398666666666665
-AUC of vase test set: 0.9519400352733683
-AUC of wineglass test set: 0.8819363222871994
-
-****************************************************************************************************
-
-Mean AUC: 0.8975667260043426
+apple          : 0.9029
+backpack       : 0.9227
+banana         : 0.8749
+baseballbat    : 0.8301
+baseballglove  : 0.8381
+bench          : 0.9744
+bicycle        : 0.9463
+bottle         : 0.9126
+bowl           : 0.8894
+broccoli       : 0.8857
+cake           : 0.8689
+car            : 0.9087
+carrot         : 0.8797
+cellphone      : 0.7784
+chair          : 0.9593
+cup            : 0.8517
+donut          : 0.9211
+hairdryer      : 0.9347
+handbag        : 0.9008
+hydrant        : 0.9580
+keyboard       : 0.8403
+laptop         : 0.8631
+microwave      : 0.8581
+motorcycle     : 0.9616
+mouse          : 0.9030
+orange         : 0.8850
+parkingmeter   : 0.9125
+pizza          : 0.8448
+plant          : 0.9510
+stopsign       : 0.8851
+teddybear      : 0.9344
+toaster        : 0.9598
+toilet         : 0.8088
+toybus         : 0.9007
+toyplane       : 0.8312
+toytrain       : 0.8452
+toytruck       : 0.8566
+tv             : 0.9405
+umbrella       : 0.9461
+vase           : 0.9509
+wineglass      : 0.8759
+--------------------------------------------------
+Mean AUC: 0.8949
 ```
 
 Note that this evaluation implementation may differ slightly from the internal one used for the paper, while our reported AUC@30 value is 89.8%, which is slightly better than the value of 88.2% reported in the paper.
@@ -95,10 +95,9 @@ Note that this evaluation implementation may differ slightly from the internal o
 The following features are planned for future releases:
 
 - [x] Camera pose estimation code on Co3D
-- [ ] VGGT+BA (Bundle Adjustment) on Co3D
+- [x] VGGT+BA (Bundle Adjustment) on Co3D
 - [ ] Evaluation on Re10K dataset
 - [ ] Evaluation on IMC dataset
 - [ ] Evaluation of multi-view depth estimation
 
 ---
-
