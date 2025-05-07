@@ -202,7 +202,7 @@ def align_to_first_camera(camera_poses):
 def setup_args():
     """Set up command-line arguments for the CO3D evaluation script."""
     parser = argparse.ArgumentParser(description='Test VGGT on CO3D dataset')
-    parser.add_argument('--debug', action='store_true', help='Enable debug mode (only test on teddybear category)')
+    parser.add_argument('--debug', action='store_true', help='Enable debug mode (only test on apple category)')
     parser.add_argument('--use_ba', action='store_true', default=False, help='Enable bundle adjustment')
     parser.add_argument('--min_num_images', type=int, default=50, help='Minimum number of images for a sequence')
     parser.add_argument('--num_frames', type=int, default=10, help='Number of frames to use for testing')

@@ -258,21 +258,34 @@ def extract_keypoints(query_image, extractors, max_query_num):
     return query_points_round
 
 
-def run_vggt_with_ba(model, images, image_names=None, dtype=torch.bfloat16,
-                     max_query_num=2048, det_thres=0.005, query_frame_num=3,
-                     extractor_method="aliked+sp+sift",
-                     max_reproj_error=12,
-                     shared_camera=True,
-                     camera_type="SIMPLE_PINHOLE",
-                     ):
+def run_vggt_with_ba(
+    model, 
+    images, 
+    image_names=None, 
+    dtype=torch.bfloat16,
+    max_query_num=2048, 
+    det_thres=0.005, 
+    query_frame_num=3,
+    extractor_method="aliked+sp+sift",
+    max_reproj_error=12,
+    shared_camera=True,
+    camera_type="SIMPLE_PINHOLE",
+):
     """
     Run VGGT with bundle adjustment for pose estimation.
 
     Args:
-        model: VGGT model
+        model: VGGT model for feature extraction and tracking
         images: Tensor of images of shape (S, 3, H, W)
         image_names: Optional list of image names
-        dtype: Data type for computation
+        dtype: Data type for computation (default: torch.bfloat16)
+        max_query_num: Maximum number of query points to track (default: 2048)
+        det_thres: Detection threshold for keypoint extraction (default: 0.005)
+        query_frame_num: Number of frames to select for feature extraction (default: 3)
+        extractor_method: Feature extraction method (default: "aliked+sp+sift")
+        max_reproj_error: Maximum reprojection error for bundle adjustment (default: 12)
+        shared_camera: Whether to use shared camera parameters (default: True)
+        camera_type: Camera model type (default: "SIMPLE_PINHOLE")
 
     Returns:
         Predicted extrinsic camera parameters
@@ -280,21 +293,18 @@ def run_vggt_with_ba(model, images, image_names=None, dtype=torch.bfloat16,
     TODO:
         - [ ] Use VGGT's vit instead of dinov2 for rank generation
     """
-    print(f"Running VGGT with bundle adjustment for pose estimation")
 
     assert "RADIAL" not in camera_type, "RADIAL camera is not supported yet"
 
     device = images.device
     frame_num = images.shape[0]
 
-    # TODO: use vggt's vit instead of dinov2
     # Select representative frames for feature extraction
     query_frame_indexes = generate_rank_by_dino(
         images, query_frame_num, image_size=518,
         model_name="dinov2_vitb14_reg", device=device,
         spatial_similarity=False
     )
-    # query_frame_indexes = [0, 5, 9]
 
     # Add the first image to the front if not already present
     if 0 in query_frame_indexes:
@@ -329,7 +339,6 @@ def run_vggt_with_ba(model, images, image_names=None, dtype=torch.bfloat16,
 
     # Initialize feature extractors
     extractors = initialize_feature_extractors(max_query_num, det_thres, extractor_method, device)
-
 
     # Process each query frame
     for query_index in query_frame_indexes:
@@ -377,10 +386,9 @@ def run_vggt_with_ba(model, images, image_names=None, dtype=torch.bfloat16,
     filtered_flag = pred_world_points_conf > 1.5
 
     if filtered_flag.sum() > max_query_num // 2:
-        # well if the number of points is too small, we will not filter
+        # Only filter if we have enough high-confidence points
         pred_world_points = pred_world_points[filtered_flag]
         pred_world_points_conf = pred_world_points_conf[filtered_flag]
-
         pred_tracks = pred_tracks[:, filtered_flag]
         pred_vis_scores = pred_vis_scores[:, filtered_flag]
         pred_conf_scores = pred_conf_scores[:, filtered_flag]
@@ -390,10 +398,9 @@ def run_vggt_with_ba(model, images, image_names=None, dtype=torch.bfloat16,
     # Bundle adjustment parameters
     S, _, H, W = images.shape
     image_size = torch.tensor([W, H], dtype=pred_tracks.dtype, device=device)
-
     masks = torch.logical_and(pred_vis_scores > 0.05, pred_conf_scores > 0.05)
 
-
+    # Convert to pycolmap format and run bundle adjustment
     reconstruction, valid_track_mask = batch_matrix_to_pycolmap(
         pred_world_points,
         pred_extrinsic,
@@ -405,6 +412,7 @@ def run_vggt_with_ba(model, images, image_names=None, dtype=torch.bfloat16,
         shared_camera=shared_camera,
         camera_type=camera_type,
     )
+    
     if reconstruction is None:
         return pred_extrinsic
 

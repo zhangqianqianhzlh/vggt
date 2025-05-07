@@ -1,16 +1,35 @@
 # VGGT Evaluation
 
-This repository contains code to reproduce the evaluation results of VGGT.
+This repository contains code to reproduce the evaluation results presented in the VGGT paper.
 
 ## Table of Contents
 
 - [Camera Pose Estimation on Co3D](#camera-pose-estimation-on-co3d)
+  - [Setup](#setup)
   - [Dataset Preparation](#dataset-preparation)
   - [Running the Evaluation](#running-the-evaluation)
   - [Expected Results](#expected-results)
 - [Checklist](#checklist)
 
 ## Camera Pose Estimation on Co3D
+
+### Setup
+
+Before running the evaluation, ensure you have installed all necessary dependencies:
+
+```bash
+# Install VGGT as a package
+pip install -e .
+
+# Install required dependencies for evaluation
+pip install pycolmap==3.10.0 pyceres==2.3
+
+# Install LightGlue for feature matching
+git clone https://github.com/cvg/LightGlue.git
+cd LightGlue
+python -m pip install -e .
+cd ..
+```
 
 ### Dataset Preparation
 
@@ -26,17 +45,18 @@ This repository contains code to reproduce the evaluation results of VGGT.
 
 ### Running the Evaluation
 
-0. Install vggt as a package, pip install -e .
+Run the evaluation script using one of the following commands:
 
-1. Update the Co3D paths in `test_co3d.py`:
-   - Set `CO3D_DIR` to your Co3D dataset directory
-   - Set `CO3D_ANNOTATION_DIR` to your processed annotations directory
+```bash
+# Run standard VGGT evaluation
+python test_co3d.py --co3d_dir /YOUR/CO3D/PATH --co3d_anno_dir /YOUR/CO3D/ANNO/PATH
 
-2. Run the evaluation script:
+# Run VGGT with Bundle Adjustment
+python test_co3d.py --co3d_dir /YOUR/CO3D/PATH --co3d_anno_dir /YOUR/CO3D/ANNO/PATH --use_ba
+```
 
-   ```bash
-   python test_co3d.py
-   ```
+   > **Note:** For simplicity, this script did not optimize the inference speed, so timing results may differ from those reported in the paper. For example, when using ba, keypoint extractor models are re-initialized for each sequence rather than being loaded once.
+
 
 ### Expected Results
 
@@ -88,7 +108,9 @@ wineglass      : 0.8759
 Mean AUC: 0.8949
 ```
 
-Note that this evaluation implementation may differ slightly from the internal one used for the paper, while our reported AUC@30 value is 89.8%, which is slightly better than the value of 88.2% reported in the paper.
+The implementation in this repository produces an AUC@30 value of 89.5%, which is slightly higher than the 88.2% reported in the paper due to minor implementation differences.
+
+When using Bundle Adjustment (`--use_ba`), you should expect a Mean AUC ranging from 90.5% to 92.0%.
 
 ## Checklist
 
