@@ -24,7 +24,7 @@ pip install -e .
 # Install required dependencies for evaluation
 pip install pycolmap==3.10.0 pyceres==2.3
 
-# Install LightGlue for feature matching
+# Install LightGlue for keypoint detection methods
 git clone https://github.com/cvg/LightGlue.git
 cd LightGlue
 python -m pip install -e .
