@@ -320,8 +320,12 @@ def process_sequence(model, seq_name, seq_data, category, co3d_dir, min_num_imag
         gt_se3 = align_to_first_camera(gt_se3)
 
         rel_rangle_deg, rel_tangle_deg = se3_to_relative_pose_error(pred_se3, gt_se3, num_frames)
-        print(f"{category} sequence {seq_name} Rot Error: {rel_rangle_deg.mean().item():.4f}")
-        print(f"{category} sequence {seq_name} Trans Error: {rel_tangle_deg.mean().item():.4f}")
+
+        Racc_5 = (rel_rangle_deg<5).float().mean().item()
+        Tacc_5 = (rel_tangle_deg<5).float().mean().item()
+
+        print(f"{category} sequence {seq_name} R_ACC@5: {Racc_5:.4f}")
+        print(f"{category} sequence {seq_name} T_ACC@5: {Tacc_5:.4f}")
 
         return rel_rangle_deg.cpu().numpy(), rel_tangle_deg.cpu().numpy()
 
