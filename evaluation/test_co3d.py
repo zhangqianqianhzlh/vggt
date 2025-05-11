@@ -4,6 +4,8 @@ import numpy as np
 import gzip
 import json
 import random
+import logging
+import warnings
 from vggt.models.vggt import VGGT
 from vggt.utils.rotation import mat_to_quat
 from vggt.utils.load_fn import load_and_preprocess_images
@@ -12,6 +14,14 @@ from vggt.utils.geometry import closed_form_inverse_se3
 from ba import run_vggt_with_ba
 import argparse
 
+# Suppress DINO v2 logs
+logging.getLogger("dinov2").setLevel(logging.WARNING)
+warnings.filterwarnings("ignore", message="xFormers is available")
+warnings.filterwarnings("ignore", message="dinov2")
+
+# Set computation precision
+torch.set_float32_matmul_precision('highest')
+torch.backends.cudnn.allow_tf32 = False
 
 
 def convert_pt3d_RT_to_opencv(Rot, Trans):
@@ -202,31 +212,35 @@ def align_to_first_camera(camera_poses):
 def setup_args():
     """Set up command-line arguments for the CO3D evaluation script."""
     parser = argparse.ArgumentParser(description='Test VGGT on CO3D dataset')
-    parser.add_argument('--debug', action='store_true', help='Enable debug mode (only test on apple category)')
+    parser.add_argument('--debug', action='store_true', help='Enable debug mode (only test on specific category)')
     parser.add_argument('--use_ba', action='store_true', default=False, help='Enable bundle adjustment')
+    parser.add_argument('--fast_eval', action='store_true', default=False, help='Only evaluate 10 sequences per category')
     parser.add_argument('--min_num_images', type=int, default=50, help='Minimum number of images for a sequence')
     parser.add_argument('--num_frames', type=int, default=10, help='Number of frames to use for testing')
     parser.add_argument('--co3d_dir', type=str, required=True, help='Path to CO3D dataset')
     parser.add_argument('--co3d_anno_dir', type=str, required=True, help='Path to CO3D annotations')
-    parser.add_argument('--seed', type=int, default=0, help='Random seed for reproducibility')
+    parser.add_argument('--seed', type=int, default=42, help='Random seed for reproducibility')
+    parser.add_argument('--model_path', type=str, required=True, help='Path to the VGGT model checkpoint')
     return parser.parse_args()
 
 
-def load_model(device):
+def load_model(device, model_path):
     """
     Load the VGGT model.
 
     Args:
         device: Device to load the model on
-        dtype: Data type for model inference
+        model_path: Path to the model checkpoint
 
     Returns:
         Loaded VGGT model
     """
     print("Initializing and loading VGGT model...")
     model = VGGT()
-    _URL = "https://huggingface.co/facebook/VGGT-1B/resolve/main/model.pt"
-    model.load_state_dict(torch.hub.load_state_dict_from_url(_URL))
+    # _URL = "https://huggingface.co/facebook/VGGT-1B/resolve/main/model.pt"
+    # model.load_state_dict(torch.hub.load_state_dict_from_url(_URL))
+    print(f"USING {model_path}")
+    model.load_state_dict(torch.load(model_path))
     model.eval()
     model = model.to(device)
     return model
@@ -280,8 +294,10 @@ def process_sequence(model, seq_name, seq_data, category, co3d_dir, min_num_imag
             "extri": extri_opencv,
         })
 
-    # random sample num_frames images
+    # Random sample num_frames images
     ids = np.random.choice(len(metadata), num_frames, replace=False)
+    print("Image ids", ids)
+
     image_names = [os.path.join(co3d_dir, metadata[i]["filepath"]) for i in ids]
     gt_extri = [np.array(metadata[i]["extri"]) for i in ids]
     gt_extri = np.stack(gt_extri, axis=0)
@@ -321,8 +337,8 @@ def process_sequence(model, seq_name, seq_data, category, co3d_dir, min_num_imag
 
         rel_rangle_deg, rel_tangle_deg = se3_to_relative_pose_error(pred_se3, gt_se3, num_frames)
 
-        Racc_5 = (rel_rangle_deg<5).float().mean().item()
-        Tacc_5 = (rel_tangle_deg<5).float().mean().item()
+        Racc_5 = (rel_rangle_deg < 5).float().mean().item()
+        Tacc_5 = (rel_tangle_deg < 5).float().mean().item()
 
         print(f"{category} sequence {seq_name} R_ACC@5: {Racc_5:.4f}")
         print(f"{category} sequence {seq_name} T_ACC@5: {Tacc_5:.4f}")
@@ -340,7 +356,7 @@ def main():
     dtype = torch.bfloat16 if torch.cuda.is_available() and torch.cuda.get_device_capability()[0] >= 8 else torch.float16
 
     # Load model
-    model = load_model(device)
+    model = load_model(device, model_path=args.model_path)
 
     # Set random seeds
     set_random_seeds(args.seed)
@@ -358,7 +374,7 @@ def main():
     ]
 
     if args.debug:
-        SEEN_CATEGORIES = ["apple"]
+        SEEN_CATEGORIES = ["parkingmeter"]
 
     per_category_results = {}
 
@@ -376,7 +392,17 @@ def main():
         rError = []
         tError = []
 
-        for seq_name, seq_data in annotation.items():
+        seq_names = sorted(list(annotation.keys()))
+        if args.fast_eval and len(seq_names)>=10:
+            seq_names = random.sample(seq_names, 10)
+        seq_names = sorted(seq_names)
+
+
+        print("Testing Sequences: ")
+        print(seq_names)
+
+        for seq_name in seq_names:
+            seq_data = annotation[seq_name]
             print("-" * 50)
             print(f"Processing {seq_name} for {category} test set")
             if args.debug and not os.path.exists(os.path.join(args.co3d_dir, category, seq_name)):
@@ -431,7 +457,6 @@ def main():
         print(f"{BOLD}{BLUE}Mean AUC of categories by now:{RESET} {RED}{mean_AUC_30_by_now:.4f} (AUC@30), {mean_AUC_15_by_now:.4f} (AUC@15), {mean_AUC_5_by_now:.4f} (AUC@5), {mean_AUC_3_by_now:.4f} (AUC@3){RESET}")
         print("="*80)
 
-
     # Print summary results
     print("\nSummary of AUC results:")
     print("-"*50)
@@ -445,7 +470,7 @@ def main():
         mean_AUC_3 = np.mean([per_category_results[category]["Auc_3"] for category in per_category_results])
         print("-"*50)
         print(f"Mean AUC: {mean_AUC_30:.4f} (AUC@30), {mean_AUC_15:.4f} (AUC@15), {mean_AUC_5:.4f} (AUC@5), {mean_AUC_3:.4f} (AUC@3)")
-
+    print(args.model_path)
 
 if __name__ == "__main__":
     main()

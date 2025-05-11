@@ -259,12 +259,12 @@ def extract_keypoints(query_image, extractors, max_query_num):
 
 
 def run_vggt_with_ba(
-    model, 
-    images, 
-    image_names=None, 
+    model,
+    images,
+    image_names=None,
     dtype=torch.bfloat16,
-    max_query_num=2048, 
-    det_thres=0.005, 
+    max_query_num=2048,
+    det_thres=0.005,
     query_frame_num=3,
     extractor_method="aliked+sp+sift",
     max_reproj_error=12,
@@ -398,7 +398,7 @@ def run_vggt_with_ba(
     # Bundle adjustment parameters
     S, _, H, W = images.shape
     image_size = torch.tensor([W, H], dtype=pred_tracks.dtype, device=device)
-    masks = torch.logical_and(pred_vis_scores > 0.05, pred_conf_scores > 0.05)
+    masks = torch.logical_and(pred_vis_scores > 0.05, pred_conf_scores > 0.2)
 
     # Convert to pycolmap format and run bundle adjustment
     reconstruction, valid_track_mask = batch_matrix_to_pycolmap(
@@ -412,7 +412,7 @@ def run_vggt_with_ba(
         shared_camera=shared_camera,
         camera_type=camera_type,
     )
-    
+
     if reconstruction is None:
         return pred_extrinsic
 
