@@ -82,10 +82,7 @@ python test_co3d.py \
 ### Expected Results
 
 #### Quick Evaluation
-The whole testing may take one day. For faster trials, we 
-recommend running with ```--fast_eval```. This does exactly the 
-same but limiting to evaluate over at most 10 sequence per 
-category.
+Full evaluation on Co3D can take a long time. For faster trials, you can run with ```--fast_eval```. This does exactly the same but limiting to evaluate over at most 10 sequence per category.
 
 Use `--fast_eval` to test on a subset of data (max 10 sequences per category):
 
@@ -103,8 +100,8 @@ Use `--fast_eval` to test on a subset of data (max 10 sequences per category):
 
 #### Full Evaluation
 
-- Standard evaluation achieves 89.5% AUC@30 (slightly higher than the 88.2% reported in the paper due to implementation differences)
-- With Bundle Adjustment, expect Mean AUC@30 between 90.5% and 92.5%
+- Feedforward estimation achieves a Mean AUC@30 of 89.5% (slightly higher than the 88.2% reported in the paper due to implementation differences)
+- With Bundle Adjustment, you can expect a Mean AUC@30 between 90.5% and 92.5%
 
 > **Note:** For simplicity, this script did not optimize the inference speed, so timing results may differ from those reported in the paper. For example, when using ba, keypoint extractor models are re-initialized for each sequence rather than being loaded once.
 
