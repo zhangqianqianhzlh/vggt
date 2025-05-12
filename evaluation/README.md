@@ -5,6 +5,7 @@ This repository contains code to reproduce the evaluation results presented in t
 ## Table of Contents
 
 - [Camera Pose Estimation on Co3D](#camera-pose-estimation-on-co3d)
+  - [Model Weights](#model-weights)
   - [Setup](#setup)
   - [Dataset Preparation](#dataset-preparation)
   - [Running the Evaluation](#running-the-evaluation)
@@ -13,18 +14,28 @@ This repository contains code to reproduce the evaluation results presented in t
 
 ## Camera Pose Estimation on Co3D
 
+### Model Weights
+
+We have addressed a minor bug in the publicly released checkpoint related to the TrackHead configuration. Specifically, the `pos_embed` flag was incorrectly set to `False`. The following checkpoint incorporates this fix by fine-tuning the tracker head with `pos_embed` as `True` while preserving all other parameters. This fix will be merged into the main branch in a future update.
+
+```bash
+wget https://huggingface.co/facebook/VGGT_tracker_fixed/resolve/main/model_tracker_fixed_e20.pt
+```
+
+Note: The default checkpoint remains functional, though you may observe a slight performance decrease (approximately 0.3% in AUC@30) when using Bundle Adjustment (BA). If using the default checkpoint, ensure you set `pos_embed` to `False` for the TrackHead. This modification only affects tracking-based evaluations and has no impact on feed-forward estimation performance, as tracking is not utilized in the feed-forward approach.
+
 ### Setup
 
-Before running the evaluation, ensure you have installed all necessary dependencies:
+Install the required dependencies:
 
 ```bash
 # Install VGGT as a package
 pip install -e .
 
-# Install required dependencies for evaluation
+# Install evaluation dependencies
 pip install pycolmap==3.10.0 pyceres==2.3
 
-# Install LightGlue for keypoint detection methods
+# Install LightGlue for keypoint detection
 git clone https://github.com/cvg/LightGlue.git
 cd LightGlue
 python -m pip install -e .
@@ -35,82 +46,67 @@ cd ..
 
 1. Download the Co3D dataset from the [official repository](https://github.com/facebookresearch/co3d)
 
-2. Preprocess the Co3D dataset (takes approximately 5 minutes):
-
-   ```bash
-   python preprocess_co3d.py --category all --co3d_v2_dir /YOUR/CO3D/PATH --output_dir /YOUR/CO3D/ANNO/PATH
-   ```
+2. Preprocess the dataset (approximately 5 minutes):
+```bash
+python preprocess_co3d.py --category all \
+    --co3d_v2_dir /YOUR/CO3D/PATH \
+    --output_dir /YOUR/CO3D/ANNO/PATH
+```
 
    Replace `/YOUR/CO3D/PATH` with the path to your downloaded Co3D dataset, and `/YOUR/CO3D/ANNO/PATH` with the desired output directory for the processed annotations.
 
 ### Running the Evaluation
 
-Run the evaluation script using one of the following commands:
+Choose one of these evaluation modes:
 
 ```bash
-# Run standard VGGT evaluation
-python test_co3d.py --co3d_dir /YOUR/CO3D/PATH --co3d_anno_dir /YOUR/CO3D/ANNO/PATH
+# Standard VGGT evaluation
+python test_co3d.py \
+    --model_path /YOUR/MODEL/PATH \
+    --co3d_dir /YOUR/CO3D/PATH \
+    --co3d_anno_dir /YOUR/CO3D/ANNO/PATH \
+    --seed 0
 
-# Run VGGT with Bundle Adjustment
-python test_co3d.py --co3d_dir /YOUR/CO3D/PATH --co3d_anno_dir /YOUR/CO3D/ANNO/PATH --use_ba
+# VGGT with Bundle Adjustment
+python test_co3d.py \
+    --model_path /YOUR/MODEL/PATH \
+    --co3d_dir /YOUR/CO3D/PATH \
+    --co3d_anno_dir /YOUR/CO3D/ANNO/PATH \
+    --seed 0 \
+    --use_ba
 ```
 
-   > **Note:** For simplicity, this script did not optimize the inference speed, so timing results may differ from those reported in the paper. For example, when using ba, keypoint extractor models are re-initialized for each sequence rather than being loaded once.
+   
 
 
 ### Expected Results
 
-After the evaluation completes, you should see results similar to:
+#### Quick Evaluation
+The whole testing may take one day. For faster trials, we 
+recommend running with ```--fast_eval```. This does exactly the 
+same but limiting to evaluate over at most 10 sequence per 
+category.
 
-```
-apple          : 0.9029
-backpack       : 0.9227
-banana         : 0.8749
-baseballbat    : 0.8301
-baseballglove  : 0.8381
-bench          : 0.9744
-bicycle        : 0.9463
-bottle         : 0.9126
-bowl           : 0.8894
-broccoli       : 0.8857
-cake           : 0.8689
-car            : 0.9087
-carrot         : 0.8797
-cellphone      : 0.7784
-chair          : 0.9593
-cup            : 0.8517
-donut          : 0.9211
-hairdryer      : 0.9347
-handbag        : 0.9008
-hydrant        : 0.9580
-keyboard       : 0.8403
-laptop         : 0.8631
-microwave      : 0.8581
-motorcycle     : 0.9616
-mouse          : 0.9030
-orange         : 0.8850
-parkingmeter   : 0.9125
-pizza          : 0.8448
-plant          : 0.9510
-stopsign       : 0.8851
-teddybear      : 0.9344
-toaster        : 0.9598
-toilet         : 0.8088
-toybus         : 0.9007
-toyplane       : 0.8312
-toytrain       : 0.8452
-toytruck       : 0.8566
-tv             : 0.9405
-umbrella       : 0.9461
-vase           : 0.9509
-wineglass      : 0.8759
---------------------------------------------------
-Mean AUC: 0.8949
-```
+Use `--fast_eval` to test on a subset of data (max 10 sequences per category):
 
-The implementation in this repository produces an AUC@30 value of 89.5%, which is slightly higher than the 88.2% reported in the paper due to minor implementation differences.
+- Feed-forward estimation:
+  - AUC@30: 0.8945
+  - AUC@15: 0.8329
+  - AUC@5: 0.6686
+  - AUC@3: 0.5608
 
-When using Bundle Adjustment (`--use_ba`), you should expect a Mean AUC ranging from 90.5% to 92.0%.
+- With Bundle Adjustment (`--use_ba`):
+  - AUC@30: 0.9011
+  - AUC@15: 0.8439
+  - AUC@5: 0.6701
+  - AUC@3: 0.6051
+
+#### Full Evaluation
+
+- Standard evaluation achieves 89.5% AUC@30 (slightly higher than the 88.2% reported in the paper due to implementation differences)
+- With Bundle Adjustment, expect Mean AUC@30 between 90.5% and 92.5%
+
+> **Note:** For simplicity, this script did not optimize the inference speed, so timing results may differ from those reported in the paper. For example, when using ba, keypoint extractor models are re-initialized for each sequence rather than being loaded once.
 
 ## Checklist
 

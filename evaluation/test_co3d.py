@@ -219,7 +219,7 @@ def setup_args():
     parser.add_argument('--num_frames', type=int, default=10, help='Number of frames to use for testing')
     parser.add_argument('--co3d_dir', type=str, required=True, help='Path to CO3D dataset')
     parser.add_argument('--co3d_anno_dir', type=str, required=True, help='Path to CO3D annotations')
-    parser.add_argument('--seed', type=int, default=42, help='Random seed for reproducibility')
+    parser.add_argument('--seed', type=int, default=0, help='Random seed for reproducibility')
     parser.add_argument('--model_path', type=str, required=True, help='Path to the VGGT model checkpoint')
     return parser.parse_args()
 
