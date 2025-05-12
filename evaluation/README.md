@@ -90,16 +90,16 @@ category.
 Use `--fast_eval` to test on a subset of data (max 10 sequences per category):
 
 - Feed-forward estimation:
-  - AUC@30: 0.8945
-  - AUC@15: 0.8329
-  - AUC@5: 0.6686
-  - AUC@3: 0.5608
+  - AUC@30: 89.45
+  - AUC@15: 83.29
+  - AUC@5: 66.86
+  - AUC@3: 56.08
 
 - With Bundle Adjustment (`--use_ba`):
-  - AUC@30: 0.9011
-  - AUC@15: 0.8439
-  - AUC@5: 0.6701
-  - AUC@3: 0.6051
+  - AUC@30: 90.11
+  - AUC@15: 84.39
+  - AUC@5: 70.02
+  - AUC@3: 60.51
 
 #### Full Evaluation
 
