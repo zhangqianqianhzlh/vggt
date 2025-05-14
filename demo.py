@@ -4,11 +4,22 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
-
+import random
+import numpy as np
+import glob
+import os
 import torch
+
+# Configure CUDA settings early
+torch.backends.cudnn.enabled = True
+torch.backends.cudnn.benchmark = True
+torch.backends.cudnn.deterministic = False
+
 import argparse
 from pathlib import Path
 
+from vggt.models.vggt import VGGT
+from vggt.utils.load_fn import load_and_preprocess_images_square
 
 def parse_args():
     parser = argparse.ArgumentParser(description='VGGT Demo')
@@ -18,26 +29,76 @@ def parse_args():
                       help='Random seed for reproducibility')
     return parser.parse_args()
 
+
+def run_VGGT(model, images, dtype):
+    # hard-coded to use 518
+    images = F.interpolate(images, size=(518, 518), mode="bicubic", align_corners=False)
+    
+    with torch.no_grad():
+        with torch.cuda.amp.autocast(dtype=dtype):
+            aggregated_tokens_list, ps_idx = model.aggregator(images)
+                    
+        # Predict Cameras
+        pose_enc = model.camera_head(aggregated_tokens_list)[-1]
+        # Extrinsic and intrinsic matrices, following OpenCV convention (camera from world)
+        extrinsic, intrinsic = pose_encoding_to_extri_intri(pose_enc, images.shape[-2:])
+
+        # Predict Depth Maps
+        depth_map, depth_conf = model.depth_head(aggregated_tokens_list, images, ps_idx)
+
+    return extrinsic, intrinsic, depth_map, depth_conf
+
+
 def demo_fn(args):
     # Print configuration
     print("Arguments:", vars(args))
 
-    # Configure CUDA settings
-    torch.backends.cudnn.enabled = True
-    torch.backends.cudnn.benchmark = True
-    torch.backends.cudnn.deterministic = False
-
     # Set seed for reproducibility
-    seed_all_random_engines(args.seed)
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
+    random.seed(args.seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(args.seed)
+        torch.cuda.manual_seed_all(args.seed)  # for multi-GPU
+    print(f"Seed: {args.seed}")
 
-    # TODO: rewrite the demo loader
-    # Load Data
-    test_dataset = DemoLoader(
-        SCENE_DIR=args.scene_dir,
-        img_size=args.img_size,
-        normalize_cameras=False,
-        load_gt=args.load_gt,
-    )
+    # Set device and dtype
+    dtype = torch.bfloat16 if torch.cuda.get_device_capability()[0] >= 8 else torch.float16
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    print(f"Using device: {device}")
+    print(f"Using dtype: {dtype}")
+    
+    # Run VGGT for camera and depth estimation
+    model = VGGT()
+    _URL = "https://huggingface.co/facebook/VGGT-1B/resolve/main/model.pt"
+    model.load_state_dict(torch.hub.load_state_dict_from_url(_URL))
+    model.eval()
+    model = model.to(device)
+    print(f"Model loaded")
+    
+
+    # Get image paths and preprocess them 
+    image_dir = os.path.join(args.scene_dir, "images")
+    image_path_list = glob.glob(os.path.join(image_dir, "*"))
+    if len(image_path_list) == 0:
+        raise ValueError(f"No images found in {image_dir}")
+    
+    # Load images and original coordinates
+    # Default to square images with 1024x1024 resolution
+    images, original_coords = load_and_preprocess_images_square(image_path_list)
+    images = images.to(device)
+    original_coords = original_coords.to(device)
+    print(f"Loaded {len(images)} images from {image_dir}")
+    
+
+    # Run VGGT to estimate camera and depth
+    # Run with 518x518 images
+    extrinsic, intrinsic, depth_map, depth_conf = run_VGGT(model, images, dtype)
+
+    import pdb; pdb.set_trace()
+
+
+    # torchvision.utils.save_image(images[:,:, 85:431, 0:518], "images.png")
 
     sequence_list = test_dataset.sequence_list
     seq_name = sequence_list[0]  # Run on one Scene

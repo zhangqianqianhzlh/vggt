@@ -10,7 +10,7 @@ from torchvision import transforms as TF
 import numpy as np
 
 
-def load_and_preprocess_images_square(image_path_list, target_size=518):
+def load_and_preprocess_images_square(image_path_list, target_size=1024):
     """
     Load and preprocess images by center padding to square and resizing to target size.
     Also returns the position information of original pixels after transformation.
@@ -83,14 +83,13 @@ def load_and_preprocess_images_square(image_path_list, target_size=518):
 
     # Stack all images
     images = torch.stack(images)
+    original_coords = torch.from_numpy(np.array(original_coords)).float()
 
-    # Ensure correct shape when single image
+    # Add additional dimension if single image to ensure correct shape
     if len(image_path_list) == 1:
         if images.dim() == 3:
             images = images.unsqueeze(0)
-
-    # Convert original_coords to torch tensor instead of numpy array
-    original_coords = torch.tensor(original_coords, dtype=torch.float32)
+            original_coords = original_coords.unsqueeze(0)
 
     return images, original_coords
 
