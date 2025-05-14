@@ -15,7 +15,8 @@ from einops import rearrange, repeat
 from einops.layers.torch import Rearrange, Reduce
 
 from hydra.utils import instantiate
-from .track_modules.refine_track import refine_track
+from omegaconf import OmegaConf
+from .track_modules.track_refine import refine_track
 
 
 
@@ -46,6 +47,7 @@ class TrackerPredictor(nn.Module):
                 'FEATURENET': {'_target_': 'BasicEncoder'}, 
                 'PREDICTOR': {'_target_': 'BaseTrackerPredictor'}
             }
+            COARSE = OmegaConf.create(COARSE)
         
         if FINE is None:
             FINE = {
@@ -61,6 +63,7 @@ class TrackerPredictor(nn.Module):
                     'use_spaceatt': False
                 }
             }
+            FINE = OmegaConf.create(FINE)
 
         # coarse predictor
         self.coarse_down_ratio = COARSE.down_ratio

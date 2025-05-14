@@ -105,6 +105,8 @@ def demo_fn(args):
     extrinsic, intrinsic, depth_map, depth_conf = run_VGGT(model, images, dtype)
 
     import pdb; pdb.set_trace()
+    # from vggt.dependency.vggsfm_tracker import TrackerPredictor
+    # tracker = TrackerPredictor()
 
 
     # torchvision.utils.save_image(images[:,:, 85:431, 0:518], "images.png")
@@ -183,7 +185,7 @@ Key Features
 # Support the visualization as in VGGSfM? (Optional)
 # (Remind myself: for vggt+BA, it is better to use the tracker from VGGSfM, as its tracker head can support query at any frame with only one run)
 # (but need to fix this problem in vggt tracker head in the future)
-
+# This should also be able to handle masks
 
 
 
