@@ -16,70 +16,44 @@ from einops.layers.torch import Rearrange, Reduce
 
 from hydra.utils import instantiate
 from omegaconf import OmegaConf
-from .track_modules.track_refine import refine_track
 
+from track_modules.track_refine import refine_track
+from track_modules.blocks import BasicEncoder, ShallowEncoder
+from track_modules.base_track_predictor import BaseTrackerPredictor
 
 
 
 class TrackerPredictor(nn.Module):
-    def __init__(
-        self,
-        COARSE=None,
-        FINE=None,
-        **extra_args
-    ):
+    def __init__(self, **extra_args):
         super(TrackerPredictor, self).__init__()
         """
-        COARSE and FINE are the dicts to construct the modules
-
+        Initializes the tracker predictor.
+        
         Both coarse_predictor and fine_predictor are constructed as a BaseTrackerPredictor,
         check track_modules/base_track_predictor.py
         
         Both coarse_fnet and fine_fnet are constructed as a 2D CNN network
         check track_modules/blocks.py for BasicEncoder and ShallowEncoder 
         """
-
-        # Default values for COARSE and FINE if not provided
-        if COARSE is None:
-            COARSE = {
-                'stride': 4, 
-                'down_ratio': 2, 
-                'FEATURENET': {'_target_': 'BasicEncoder'}, 
-                'PREDICTOR': {'_target_': 'BaseTrackerPredictor'}
-            }
-            COARSE = OmegaConf.create(COARSE)
+        # Define coarse predictor configuration
+        coarse_stride = 4
+        self.coarse_down_ratio = 2
         
-        if FINE is None:
-            FINE = {
-                'FEATURENET': {'_target_': 'ShallowEncoder'}, 
-                'PREDICTOR': {
-                    '_target_': 'BaseTrackerPredictor', 
-                    'depth': 4, 
-                    'corr_levels': 3, 
-                    'corr_radius': 3, 
-                    'latent_dim': 32, 
-                    'hidden_size': 256, 
-                    'fine': True, 
-                    'use_spaceatt': False
-                }
-            }
-            FINE = OmegaConf.create(FINE)
-
-        # coarse predictor
-        self.coarse_down_ratio = COARSE.down_ratio
-        self.coarse_fnet = instantiate(
-            COARSE.FEATURENET, _recursive_=False, stride=COARSE.stride, 
-        )
-        self.coarse_predictor = instantiate(
-            COARSE.PREDICTOR, _recursive_=False, stride=COARSE.stride, 
-        )
-
-        # fine predictor, forced to use stride = 1
-        self.fine_fnet = instantiate(
-            FINE.FEATURENET, _recursive_=False, stride=1, 
-        )
-        self.fine_predictor = instantiate(
-            FINE.PREDICTOR, _recursive_=False, stride=1, 
+        # Create networks directly instead of using instantiate
+        self.coarse_fnet = BasicEncoder(stride=coarse_stride)
+        self.coarse_predictor = BaseTrackerPredictor(stride=coarse_stride)
+        
+        # Create fine predictor with stride = 1
+        self.fine_fnet = ShallowEncoder(stride=1)
+        self.fine_predictor = BaseTrackerPredictor(
+            stride=1,
+            depth=4,
+            corr_levels=3,
+            corr_radius=3,
+            latent_dim=32,
+            hidden_size=256,
+            fine=True,
+            use_spaceatt=False
         )
 
     def forward(
