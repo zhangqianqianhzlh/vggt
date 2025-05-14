@@ -33,18 +33,23 @@ def parse_args():
 
 
 def run_VGGT(model, images, dtype):
+    # images: [B, 3, H, W]
+    
+    assert len(images.shape) == 4
+    assert images.shape[1] == 3
+    
     # hard-coded to use 518
     images = F.interpolate(images, size=(518, 518), mode="bicubic", align_corners=False)
     
     with torch.no_grad():
         with torch.cuda.amp.autocast(dtype=dtype):
+            images = images[None] # add batch dimension
             aggregated_tokens_list, ps_idx = model.aggregator(images)
                     
         # Predict Cameras
         pose_enc = model.camera_head(aggregated_tokens_list)[-1]
         # Extrinsic and intrinsic matrices, following OpenCV convention (camera from world)
         extrinsic, intrinsic = pose_encoding_to_extri_intri(pose_enc, images.shape[-2:])
-
         # Predict Depth Maps
         depth_map, depth_conf = model.depth_head(aggregated_tokens_list, images, ps_idx)
 
@@ -62,7 +67,7 @@ def demo_fn(args):
     if torch.cuda.is_available():
         torch.cuda.manual_seed(args.seed)
         torch.cuda.manual_seed_all(args.seed)  # for multi-GPU
-    print(f"Seed: {args.seed}")
+    print(f"Setting seed as: {args.seed}")
 
     # Set device and dtype
     dtype = torch.bfloat16 if torch.cuda.get_device_capability()[0] >= 8 else torch.float16
