@@ -107,6 +107,8 @@ def demo_fn(args):
     import pdb; pdb.set_trace()
     # from vggt.dependency.vggsfm_tracker import TrackerPredictor
     # tracker = TrackerPredictor()
+    # 
+    # tracker.load_state_dict(torch.hub.load_state_dict_from_url("https://huggingface.co/facebook/VGGSfM/resolve/main/vggsfm_v2_tracker.pt"))
 
 
     # torchvision.utils.save_image(images[:,:, 85:431, 0:518], "images.png")
