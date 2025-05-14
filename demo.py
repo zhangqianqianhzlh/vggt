@@ -9,6 +9,7 @@ import numpy as np
 import glob
 import os
 import torch
+import torch.nn.functional as F
 
 # Configure CUDA settings early
 torch.backends.cudnn.enabled = True
@@ -20,6 +21,7 @@ from pathlib import Path
 
 from vggt.models.vggt import VGGT
 from vggt.utils.load_fn import load_and_preprocess_images_square
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description='VGGT Demo')
