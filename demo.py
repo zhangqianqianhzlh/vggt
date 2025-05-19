@@ -31,7 +31,7 @@ def parse_args():
                       help='Directory containing the scene images')
     parser.add_argument('--seed', type=int, default=42,
                       help='Random seed for reproducibility')
-    parser.add_argument('--use_ba', type=bool, default=False,
+    parser.add_argument('--use_ba', action='store_true', default=False,
                       help='Use BA for reconstruction')
     return parser.parse_args()
 

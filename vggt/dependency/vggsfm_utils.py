@@ -9,6 +9,19 @@ _RESNET_MEAN = [0.485, 0.456, 0.406]
 _RESNET_STD = [0.229, 0.224, 0.225]
 
 
+
+def build_vggsfm_tracker(model_path=None):
+    if model_path is None:
+        default_url = "https://huggingface.co/facebook/VGGSfM/resolve/main/vggsfm_v2_tracker.pt"
+        tracker = TrackerPredictor()
+        tracker.load_state_dict(torch.hub.load_state_dict_from_url(default_url))
+    else:
+        tracker = TrackerPredictor()
+        tracker.load_state_dict(torch.load(model_path))
+    tracker.eval()
+    return tracker
+
+
 def generate_rank_by_dino(
     images, query_frame_num, image_size=336, model_name="dinov2_vitb14_reg", device="cuda", spatial_similarity=False
 ):

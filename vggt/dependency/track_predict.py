@@ -6,20 +6,7 @@
 
 import torch
 from vggt.dependency.vggsfm_tracker import TrackerPredictor
-from vggt.dependency.vggsfm_utils import generate_rank_by_dino
-
-
-
-def build_vggsfm_tracker(model_path=None):
-    if model_path is None:
-        default_url = "https://huggingface.co/facebook/VGGSfM/resolve/main/vggsfm_v2_tracker.pt"
-        tracker = TrackerPredictor()
-        tracker.load_state_dict(torch.hub.load_state_dict_from_url(default_url))
-    else:
-        tracker = TrackerPredictor()
-        tracker.load_state_dict(torch.load(model_path))
-    tracker.eval()
-    return tracker
+from vggt.dependency.vggsfm_utils import generate_rank_by_dino, build_vggsfm_tracker
 
 
 def predict_tracks(images, masks=None, max_query_pts=2048, ):
