@@ -3,6 +3,7 @@ import torch.nn.functional as F
 import numpy as np
 import pycolmap
 from lightglue import ALIKED, SuperPoint, SIFT
+from vggt.dependency.vggsfm_tracker import TrackerPredictor
 
 
 _RESNET_MEAN = [0.485, 0.456, 0.406]
@@ -88,6 +89,11 @@ def generate_rank_by_dino(
     fps_idx = farthest_point_sampling(
         distance_matrix, query_frame_num, most_common_frame_index
     )
+    
+    # Clean up all tensors and models to free memory
+    del frame_feat, frame_feat_norm, similarity_matrix, distance_matrix
+    del dino_v2_model
+    torch.cuda.empty_cache()
 
     return fps_idx
 

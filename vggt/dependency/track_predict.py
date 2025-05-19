@@ -5,11 +5,10 @@
 # LICENSE file in the root directory of this source tree.
 
 import torch
-from vggt.dependency.vggsfm_tracker import TrackerPredictor
 from vggt.dependency.vggsfm_utils import generate_rank_by_dino, build_vggsfm_tracker
 
 
-def predict_tracks(images, masks=None, max_query_pts=2048, ):
+def predict_tracks(images, masks=None, max_query_pts=2048, query_frame_num=5):
     
     """
     Predict tracks for the given images and masks.
@@ -27,7 +26,16 @@ def predict_tracks(images, masks=None, max_query_pts=2048, ):
     dtype = images.dtype
     tracker = build_vggsfm_tracker().to(device, dtype)
     
+    #  Find query frames
+    query_frame_indexes = generate_rank_by_dino(images, query_frame_num=query_frame_num, device=device)
     
+    # Add the first image to the front if not already present
+    if 0 in query_frame_indexes:
+        query_frame_indexes.remove(0)
+    query_frame_indexes = [0, *query_frame_indexes]
+
+
+
     # Find query frames
     # Find query points
     # Predict tracks
