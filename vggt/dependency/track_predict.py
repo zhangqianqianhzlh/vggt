@@ -41,12 +41,16 @@ def predict_tracks(images, masks=None, max_query_pts=2048, query_frame_num=5, ke
     pred_tracks = []
     pred_vis_scores = []
     pred_conf_scores = []
+    
+    # from S, 3, H, W to B, S, 3, H, W
+    fmaps_for_tracker = tracker.process_images_to_fmaps(images)
+
 
     for query_index in query_frame_indexes:
         query_image = images[query_index]
-        query_points_round = extract_keypoints(query_image, keypoint_extractors)
+        query_points = extract_keypoints(query_image, keypoint_extractors)
 
-
+        import pdb;pdb.set_trace()
 
     
     # Find query frames

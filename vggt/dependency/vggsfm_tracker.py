@@ -79,7 +79,10 @@ class TrackerPredictor(nn.Module):
         """
 
         if fmaps is None:
-            fmaps = self.process_images_to_fmaps(images)
+            batch_num, frame_num, image_dim, height, width = images.shape
+            reshaped_image = images.reshape(batch_num * frame_num, image_dim, height, width)
+            fmaps = self.process_images_to_fmaps(reshaped_image)
+            fmaps = fmaps.reshape(batch_num, frame_num, -1, fmaps.shape[-2], fmaps.shape[-1])
 
         if inference:
             torch.cuda.empty_cache()
@@ -119,32 +122,22 @@ class TrackerPredictor(nn.Module):
         This function processes images for inference.
 
         Args:
-            images (np.array): The images to be processed.
+            images (torch.Tensor): The images to be processed with shape S x 3 x H x W.
 
         Returns:
-            np.array: The processed images.
+            torch.Tensor: The processed feature maps.
         """
-        batch_num, frame_num, image_dim, height, width = images.shape
-        assert (
-            batch_num == 1
-        ), "now we only support processing one scene during inference"
-        reshaped_image = images.reshape(
-            batch_num * frame_num, image_dim, height, width
-        )
         if self.coarse_down_ratio > 1:
             # whether or not scale down the input images to save memory
             fmaps = self.coarse_fnet(
                 F.interpolate(
-                    reshaped_image,
+                    images,
                     scale_factor=1 / self.coarse_down_ratio,
                     mode="bilinear",
                     align_corners=True,
                 )
             )
         else:
-            fmaps = self.coarse_fnet(reshaped_image)
-        fmaps = fmaps.reshape(
-            batch_num, frame_num, -1, fmaps.shape[-2], fmaps.shape[-1]
-        )
-
+            fmaps = self.coarse_fnet(images)
+        
         return fmaps
