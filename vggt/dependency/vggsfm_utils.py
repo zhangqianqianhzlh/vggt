@@ -248,7 +248,7 @@ def initialize_feature_extractors(max_query_num, det_thres=0.005, extractor_meth
     return extractors
 
 
-def extract_keypoints(query_image, extractors, max_query_num, round_keypoints=True):
+def extract_keypoints(query_image, extractors, round_keypoints=True):
     """
     Extract keypoints using pre-initialized feature extractors.
 
@@ -261,6 +261,8 @@ def extract_keypoints(query_image, extractors, max_query_num, round_keypoints=Tr
     """
     query_points = None
 
+    import pdb;pdb.set_trace()
+
     with torch.no_grad():
         for extractor_name, extractor in extractors.items():
             query_points_data = extractor.extract(query_image)
@@ -272,11 +274,5 @@ def extract_keypoints(query_image, extractors, max_query_num, round_keypoints=Tr
                 query_points = torch.cat([query_points, extractor_points], dim=1)
             else:
                 query_points = extractor_points
-
-    if query_points.shape[1] > max_query_num:
-        random_point_indices = torch.randperm(query_points.shape[1])[
-            :max_query_num
-        ]
-        query_points = query_points[:, random_point_indices, :]
 
     return query_points

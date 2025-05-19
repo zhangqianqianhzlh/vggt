@@ -36,7 +36,7 @@ def predict_tracks(images, masks=None, max_query_pts=2048, query_frame_num=5, ke
     if masks is None:
         masks = torch.ones_like(images[:, 0:1])
 
-    keypoint_extractors = initialize_feature_extractors(max_query_pts, keypoint_extractor, device)
+    keypoint_extractors = initialize_feature_extractors(max_query_pts, extractor_method=keypoint_extractor, device=device)
     
     pred_tracks = []
     pred_vis_scores = []
@@ -44,8 +44,7 @@ def predict_tracks(images, masks=None, max_query_pts=2048, query_frame_num=5, ke
 
     for query_index in query_frame_indexes:
         query_image = images[query_index]
-        import pdb;pdb.set_trace()
-        query_points_round = extract_keypoints(query_image, keypoint_extractors, max_query_num)
+        query_points_round = extract_keypoints(query_image, keypoint_extractors)
 
 
 
