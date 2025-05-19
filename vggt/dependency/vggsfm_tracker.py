@@ -84,8 +84,8 @@ class TrackerPredictor(nn.Module):
             fmaps = self.process_images_to_fmaps(reshaped_image)
             fmaps = fmaps.reshape(batch_num, frame_num, -1, fmaps.shape[-2], fmaps.shape[-1])
 
-        if inference:
-            torch.cuda.empty_cache()
+            if inference:
+                torch.cuda.empty_cache()
 
         # Coarse prediction
         coarse_pred_track_lists, pred_vis = self.coarse_predictor(
@@ -106,7 +106,7 @@ class TrackerPredictor(nn.Module):
                 self.fine_fnet,
                 self.fine_predictor,
                 coarse_pred_track,
-                compute_score=True,
+                compute_score=False,
             )
 
             if inference:

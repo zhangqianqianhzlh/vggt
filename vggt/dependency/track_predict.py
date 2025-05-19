@@ -8,7 +8,8 @@ import torch
 from vggt.dependency.vggsfm_utils import *
 
 
-def predict_tracks(images, masks=None, max_query_pts=2048, query_frame_num=5, keypoint_extractor="aliked+sp"):
+def predict_tracks(images, masks=None, max_query_pts=2048, query_frame_num=5, 
+                   keypoint_extractor="aliked+sp", max_points_num=163840, fine_tracking=True):
     
     """
     Predict tracks for the given images and masks.
@@ -54,6 +55,17 @@ def predict_tracks(images, masks=None, max_query_pts=2048, query_frame_num=5, ke
         reorder_images = switch_tensor_order([images], reorder_index, dim=0)[0]
 
         images_feed, fmaps_feed = switch_tensor_order([images, fmaps_for_tracker], reorder_index, dim=0)
+        
+        # all_points_num = images_feed.shape[1] * query_points.shape[1]
+
+
+        pred_track, _, pred_vis, pred_score = tracker(
+            images_feed[None],
+            query_points,
+            fmaps=fmaps_feed[None],
+            fine_tracking=fine_tracking,
+        )
+
         import pdb;pdb.set_trace()
 
     
