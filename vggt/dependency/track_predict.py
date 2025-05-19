@@ -3,6 +3,8 @@
 #
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
+
+import torch
 from vggt.dependency.vggsfm_tracker import TrackerPredictor
 
 
@@ -17,7 +19,7 @@ def build_vggsfm_tracker(model_path=None):
     return tracker
 
 
-def predict_track(tracker, query_frame_indexes, images, masks=None, max_query_pts=2048, ):
+def predict_track(images, masks=None, max_query_pts=2048, ):
     
     """
     Predict tracks for the given images and masks.

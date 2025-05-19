@@ -23,6 +23,7 @@ from vggt.models.vggt import VGGT
 from vggt.utils.load_fn import load_and_preprocess_images_square
 from vggt.utils.pose_enc import pose_encoding_to_extri_intri
 from vggt.utils.geometry import unproject_depth_map_to_point_map
+from vggt.dependency.track_predict import predict_track, build_vggsfm_tracker
 
 
 def parse_args():
@@ -94,6 +95,7 @@ def demo_fn(args):
     
     # Load images and original coordinates
     # Default to square images with 1024x1024 resolution
+    # TODO: also support masks here
     images, original_coords = load_and_preprocess_images_square(image_path_list)
     images = images.to(device)
     original_coords = original_coords.to(device)
@@ -104,6 +106,17 @@ def demo_fn(args):
     # Run with 518x518 images
     extrinsic, intrinsic, depth_map, depth_conf = run_VGGT(model, images, dtype)
 
+
+
+    # Predicting Tracks
+    # Using VGGSfM tracker instead of VGGT tracker for efficiency
+    # VGGT tracker requires multiple backbone runs to query different frames ((this is a problem caused by the training process))
+    # Will be fixed in VGGT v2
+    
+    predict_track(images, masks=None, max_query_pts=2048, )
+    
+    
+    # from vggt.dependency.track_predict import predict_track, build_vggsfm_tracker
     import pdb; pdb.set_trace()
     # from vggt.dependency.vggsfm_tracker import TrackerPredictor
     # tracker = TrackerPredictor()
