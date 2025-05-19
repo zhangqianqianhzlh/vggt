@@ -20,6 +20,7 @@ def predict_tracks(images, masks=None, max_query_pts=2048, query_frame_num=5, ke
     masks: [S, 1, H, W]
     """
 
+    frame_num, _, height, width = images.shape
     device = images.device
     dtype = images.dtype
     tracker = build_vggsfm_tracker().to(device, dtype)
@@ -42,7 +43,6 @@ def predict_tracks(images, masks=None, max_query_pts=2048, query_frame_num=5, ke
     pred_vis_scores = []
     pred_conf_scores = []
     
-    # from S, 3, H, W to B, S, 3, H, W
     fmaps_for_tracker = tracker.process_images_to_fmaps(images)
 
 
@@ -50,6 +50,10 @@ def predict_tracks(images, masks=None, max_query_pts=2048, query_frame_num=5, ke
         query_image = images[query_index]
         query_points = extract_keypoints(query_image, keypoint_extractors)
 
+        reorder_index = calculate_index_mappings(query_index, frame_num, device=device)
+        reorder_images = switch_tensor_order([images], reorder_index, dim=0)[0]
+
+        images_feed, fmaps_feed = switch_tensor_order([images, fmaps_for_tracker], reorder_index, dim=0)
         import pdb;pdb.set_trace()
 
     
