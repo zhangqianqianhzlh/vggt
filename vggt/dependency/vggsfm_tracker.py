@@ -17,9 +17,9 @@ from einops.layers.torch import Rearrange, Reduce
 from hydra.utils import instantiate
 from omegaconf import OmegaConf
 
-from track_modules.track_refine import refine_track
-from track_modules.blocks import BasicEncoder, ShallowEncoder
-from track_modules.base_track_predictor import BaseTrackerPredictor
+from .track_modules.track_refine import refine_track
+from .track_modules.blocks import BasicEncoder, ShallowEncoder
+from .track_modules.base_track_predictor import BaseTrackerPredictor
 
 
 
