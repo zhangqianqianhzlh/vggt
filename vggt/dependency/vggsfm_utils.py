@@ -210,7 +210,7 @@ def switch_tensor_order(tensors, order, dim=1):
 #     return pred_track.squeeze(0), vis_score.squeeze(0), conf_score.squeeze(0)
 
 
-def initialize_feature_extractors(max_query_num, det_thres, extractor_method="aliked", device="cuda"):
+def initialize_feature_extractors(max_query_num, det_thres=0.005, extractor_method="aliked", device="cuda"):
     """
     Initialize feature extractors that can be reused based on a method string.
 
@@ -248,7 +248,7 @@ def initialize_feature_extractors(max_query_num, det_thres, extractor_method="al
     return extractors
 
 
-def extract_keypoints(query_image, extractors, max_query_num):
+def extract_keypoints(query_image, extractors, max_query_num, round_keypoints=True):
     """
     Extract keypoints using pre-initialized feature extractors.
 
@@ -259,22 +259,24 @@ def extract_keypoints(query_image, extractors, max_query_num):
     Returns:
         Tensor of keypoint coordinates (1xNx2)
     """
-    query_points_round = None
+    query_points = None
 
     with torch.no_grad():
         for extractor_name, extractor in extractors.items():
             query_points_data = extractor.extract(query_image)
-            extractor_points = query_points_data["keypoints"].round()
+            extractor_points = query_points_data["keypoints"]
+            if round_keypoints:
+                extractor_points = extractor_points.round()
 
-            if query_points_round is not None:
-                query_points_round = torch.cat([query_points_round, extractor_points], dim=1)
+            if query_points is not None:
+                query_points = torch.cat([query_points, extractor_points], dim=1)
             else:
-                query_points_round = extractor_points
+                query_points = extractor_points
 
-    if query_points_round.shape[1] > max_query_num:
-        random_point_indices = torch.randperm(query_points_round.shape[1])[
+    if query_points.shape[1] > max_query_num:
+        random_point_indices = torch.randperm(query_points.shape[1])[
             :max_query_num
         ]
-        query_points_round = query_points_round[:, random_point_indices, :]
+        query_points = query_points[:, random_point_indices, :]
 
-    return query_points_round
+    return query_points

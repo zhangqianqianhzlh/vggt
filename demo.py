@@ -105,6 +105,7 @@ def demo_fn(args):
 
     # Run VGGT to estimate camera and depth
     # Run with 518x518 images
+    # TODO: return extrinsic, intrinsic, depth_map, depth_conf as cpu tensors or numpy arrays
     extrinsic, intrinsic, depth_map, depth_conf = run_VGGT(model, images, dtype)
 
 
