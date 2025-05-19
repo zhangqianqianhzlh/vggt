@@ -23,7 +23,6 @@ from vggt.models.vggt import VGGT
 from vggt.utils.load_fn import load_and_preprocess_images_square
 from vggt.utils.pose_enc import pose_encoding_to_extri_intri
 from vggt.utils.geometry import unproject_depth_map_to_point_map
-from vggt.dependency.track_predict import predict_track, build_vggsfm_tracker
 
 
 def parse_args():
@@ -32,6 +31,8 @@ def parse_args():
                       help='Directory containing the scene images')
     parser.add_argument('--seed', type=int, default=42,
                       help='Random seed for reproducibility')
+    parser.add_argument('--use_ba', type=bool, default=False,
+                      help='Use BA for reconstruction')
     return parser.parse_args()
 
 
@@ -113,7 +114,9 @@ def demo_fn(args):
     # VGGT tracker requires multiple backbone runs to query different frames ((this is a problem caused by the training process))
     # Will be fixed in VGGT v2
     
-    predict_track(images, masks=None, max_query_pts=2048, )
+    if args.use_ba:
+        from vggt.dependency.track_predict import predict_tracks
+        predict_tracks(images, masks=None, max_query_pts=2048, )
     
     
     # from vggt.dependency.track_predict import predict_track, build_vggsfm_tracker

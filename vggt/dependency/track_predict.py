@@ -6,6 +6,8 @@
 
 import torch
 from vggt.dependency.vggsfm_tracker import TrackerPredictor
+from vggt.dependency.vggsfm_utils import generate_rank_by_dino
+
 
 
 def build_vggsfm_tracker(model_path=None):
@@ -16,10 +18,11 @@ def build_vggsfm_tracker(model_path=None):
     else:
         tracker = TrackerPredictor()
         tracker.load_state_dict(torch.load(model_path))
+    tracker.eval()
     return tracker
 
 
-def predict_track(images, masks=None, max_query_pts=2048, ):
+def predict_tracks(images, masks=None, max_query_pts=2048, ):
     
     """
     Predict tracks for the given images and masks.
@@ -27,9 +30,20 @@ def predict_track(images, masks=None, max_query_pts=2048, ):
     This function predicts the tracks for the given images and masks using the specified query method
     and track predictor. It finds query points, and predicts the tracks, visibility, and scores for the query frames.
 
+
+
+    images: [S, 3, H, W]
+    masks: [S, 1, H, W]
     """
 
-
+    device = images.device
+    dtype = images.dtype
+    tracker = build_vggsfm_tracker().to(device, dtype)
+    
+    
+    # Find query frames
+    # Find query points
+    # Predict tracks
     
     import pdb;pdb.set_trace()
     

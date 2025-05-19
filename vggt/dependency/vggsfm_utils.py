@@ -10,7 +10,7 @@ _RESNET_STD = [0.229, 0.224, 0.225]
 
 
 def generate_rank_by_dino(
-    images, query_frame_num, image_size=518, model_name="dinov2_vitb14_reg", device="cuda", spatial_similarity=True
+    images, query_frame_num, image_size=336, model_name="dinov2_vitb14_reg", device="cuda", spatial_similarity=False
 ):
     """
     Generate a ranking of frames using DINO ViT features.
@@ -26,6 +26,14 @@ def generate_rank_by_dino(
     Returns:
         List of frame indices ranked by their representativeness
     """
+    
+    images = F.interpolate(
+        images,
+        (image_size, image_size),
+        mode="bilinear",
+        align_corners=False,
+    )
+
     dino_v2_model = torch.hub.load('facebookresearch/dinov2', model_name)
     dino_v2_model.eval()
     dino_v2_model = dino_v2_model.to(device)
