@@ -8,7 +8,7 @@ import torch
 from vggt.dependency.vggsfm_utils import *
 
 
-def predict_tracks(images, masks=None, max_query_pts=2048, query_frame_num=5,
+def predict_tracks(images, conf=None, masks=None, max_query_pts=2048, query_frame_num=5,
                    keypoint_extractor="aliked+sp", 
                    max_points_num=163840, fine_tracking=True, complete_non_vis=True):
 
@@ -20,6 +20,7 @@ def predict_tracks(images, masks=None, max_query_pts=2048, query_frame_num=5,
 
     Args:
         images: Tensor of shape [S, 3, H, W] containing the input images.
+        conf: Tensor of shape [S, 1, H, W] containing the confidence scores. Default is None.
         masks: Optional tensor of shape [S, 1, H, W] containing masks. Default is None.
         max_query_pts: Maximum number of query points. Default is 2048.
         query_frame_num: Number of query frames to use. Default is 5.
@@ -60,7 +61,7 @@ def predict_tracks(images, masks=None, max_query_pts=2048, query_frame_num=5,
     for query_index in query_frame_indexes:
         print(f"Predicting tracks for query frame {query_index}")
         pred_track, pred_vis = _forward_on_query(
-            query_index, images, fmaps_for_tracker, keypoint_extractors,
+            query_index, images, conf, fmaps_for_tracker, keypoint_extractors,
             tracker, max_points_num, fine_tracking, device
         )
 
@@ -91,7 +92,7 @@ def predict_tracks(images, masks=None, max_query_pts=2048, query_frame_num=5,
     return pred_tracks, pred_vis_scores
 
 
-def _forward_on_query(query_index, images, fmaps_for_tracker, keypoint_extractors, 
+def _forward_on_query(query_index, images, conf, fmaps_for_tracker, keypoint_extractors, 
                      tracker, max_points_num, fine_tracking, device):
     """
     Process a single query frame for track prediction.
@@ -115,6 +116,11 @@ def _forward_on_query(query_index, images, fmaps_for_tracker, keypoint_extractor
 
     query_image = images[query_index]
     query_points = extract_keypoints(query_image, keypoint_extractors, round_keypoints=False)
+    
+    if conf is not None:
+        import pdb; pdb.set_trace()
+    
+    
     query_points = query_points[:, torch.randperm(query_points.shape[1], device=device)]
 
     reorder_index = calculate_index_mappings(query_index, frame_num, device=device)

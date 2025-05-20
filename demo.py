@@ -117,9 +117,15 @@ def demo_fn(args):
     
     if args.use_ba:
         with torch.cuda.amp.autocast(dtype=dtype):
-            pred_tracks, pred_vis_scores = predict_tracks(images, masks=None, max_query_pts=2048, query_frame_num=5, keypoint_extractor="aliked+sp", max_points_num=163840, fine_tracking=True)
-
+            pred_tracks, pred_vis_scores, pred_confs = predict_tracks(images, conf=depth_conf[0][:, None], 
+                                                                      masks=None, max_query_pts=2048, 
+                                                                      query_frame_num=5, 
+                                                                      keypoint_extractor="aliked+sp", 
+                                                                      max_points_num=163840, fine_tracking=True)
             torch.cuda.empty_cache()
+            
+            
+            
             import pdb; pdb.set_trace()
 
             
