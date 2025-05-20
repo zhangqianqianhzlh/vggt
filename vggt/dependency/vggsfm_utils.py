@@ -293,7 +293,7 @@ def predict_tracks_in_chunks(
     Args:
         track_predictor (object): The track predictor object used for predicting tracks.
         images_feed (torch.Tensor): A tensor of shape (B, T, C, H, W) representing a batch of images.
-        query_points_list (list): A list of tensors, each of shape (B, Ni, 2) representing chunks of query points.
+        query_points_list (list or tuple): A list/tuple of tensors, each of shape (B, Ni, 2) representing chunks of query points.
         fmaps_feed (torch.Tensor): A tensor of feature maps for the tracker.
         fine_tracking (bool): Whether to perform fine tracking.
         num_splits (int, optional): Ignored when query_points_list is provided. Kept for backward compatibility.
@@ -301,12 +301,16 @@ def predict_tracks_in_chunks(
     Returns:
         tuple: A tuple containing the concatenated predicted tracks, visibility, and scores.
     """
-    # If query_points_list is not a list but a single tensor, handle it like the old version for backward compatibility
-    if not isinstance(query_points_list, list):
+    # If query_points_list is not a list or tuple but a single tensor, handle it like the old version for backward compatibility
+    if not isinstance(query_points_list, (list, tuple)):
         query_points = query_points_list
         if num_splits is None:
             num_splits = 1
         query_points_list = torch.chunk(query_points, num_splits, dim=1)
+    
+    # Ensure query_points_list is a list for iteration (as torch.chunk returns a tuple)
+    if isinstance(query_points_list, tuple):
+        query_points_list = list(query_points_list)
 
     fine_pred_track_list = []
     pred_vis_list = []
