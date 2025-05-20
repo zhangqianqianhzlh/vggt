@@ -10,7 +10,7 @@ from vggt.dependency.vggsfm_utils import *
 
 def predict_tracks(images, masks=None, max_query_pts=2048, query_frame_num=5,
                    keypoint_extractor="aliked+sp", 
-                   max_points_num=163840, fine_tracking=True):
+                   max_points_num=163840, fine_tracking=True, complete_non_vis=True):
 
     """
     Predict tracks for the given images and masks.
@@ -32,7 +32,6 @@ def predict_tracks(images, masks=None, max_query_pts=2048, query_frame_num=5,
         pred_vis_scores: Numpy array containing the visibility scores for the tracks.
     """
 
-    frame_num, _, height, width = images.shape
     device = images.device
     dtype = images.dtype
     tracker = build_vggsfm_tracker().to(device, dtype)
@@ -61,14 +60,27 @@ def predict_tracks(images, masks=None, max_query_pts=2048, query_frame_num=5,
     for query_index in query_frame_indexes:
         print(f"Predicting tracks for query frame {query_index}")
         pred_track, pred_vis = _forward_on_query(
-            query_index, images, fmaps_for_tracker, keypoint_extractors, frame_num, 
+            query_index, images, fmaps_for_tracker, keypoint_extractors,
             tracker, max_points_num, fine_tracking, device
         )
 
         pred_tracks.append(pred_track)
         pred_vis_scores.append(pred_vis)
 
-    # TODO complete non vis
+    if complete_non_vis:
+        pred_tracks, pred_vis_scores = _augment_non_visible_frames(
+            pred_tracks,
+            pred_vis_scores,
+            images,
+            fmaps_for_tracker,
+            keypoint_extractors,
+            tracker,
+            max_points_num,
+            fine_tracking,
+            min_vis=500,            
+            non_vis_thresh=0.05,
+            device=device
+        )
     
     pred_tracks = np.concatenate(pred_tracks, axis=1)
     pred_vis_scores = np.concatenate(pred_vis_scores, axis=1)
@@ -80,7 +92,7 @@ def predict_tracks(images, masks=None, max_query_pts=2048, query_frame_num=5,
 
 
 def _forward_on_query(query_index, images, fmaps_for_tracker, keypoint_extractors, 
-                     frame_num, tracker, max_points_num, fine_tracking, device):
+                     tracker, max_points_num, fine_tracking, device):
     """
     Process a single query frame for track prediction.
     
@@ -99,6 +111,8 @@ def _forward_on_query(query_index, images, fmaps_for_tracker, keypoint_extractor
         pred_track: Predicted tracks
         pred_vis: Visibility scores for the tracks
     """
+    frame_num, _, height, width = images.shape
+
     query_image = images[query_index]
     query_points = extract_keypoints(query_image, keypoint_extractors, round_keypoints=False)
     query_points = query_points[:, torch.randperm(query_points.shape[1], device=device)]
@@ -138,3 +152,73 @@ def _forward_on_query(query_index, images, fmaps_for_tracker, keypoint_extractor
 
 
 
+def _augment_non_visible_frames(
+        pred_tracks:       list,          # ← running list of np.ndarrays
+        pred_vis_scores:   list,          # ← running list of np.ndarrays
+        images:            torch.Tensor,
+        fmaps_for_tracker: torch.Tensor,
+        keypoint_extractors,
+        tracker,
+        max_points_num:    int,
+        fine_tracking:     bool,
+        *,
+        min_vis:        int   = 500,
+        non_vis_thresh: float = 0.05,
+        device:         torch.device = None,
+):
+    """
+    """
+    last_query   = -1
+    final_trial  = False
+    cur_extractors = keypoint_extractors   # may be replaced on the final trial
+
+    while True:
+        import pdb; pdb.set_trace()
+        # --- visibility per frame -----------------------------------------
+        vis_tensor = torch.from_numpy(
+            np.concatenate(pred_vis_scores, axis=1)     # [S, N_total]
+        ).to(device)
+
+        non_vis_frames = torch.nonzero(
+            (vis_tensor > non_vis_thresh).sum(-1) < min_vis
+        ).squeeze(-1).tolist()
+
+        if len(non_vis_frames) == 0:
+            break                                      # every frame is OK
+
+        print("Processing non visible frames:", non_vis_frames)
+
+        # --- decide the frames & extractor for this round -----------------
+        if non_vis_frames[0] == last_query:
+            # same frame failed twice  ➜  final “all-in” attempt
+            final_trial      = True
+            cur_extractors   = initialize_feature_extractors(
+                1024,                               # half of 2048 by default
+                extractor_method="sp+sift+aliked",
+                device=device,
+            )
+            query_frame_list = non_vis_frames      # blast them all at once
+        else:
+            query_frame_list = [non_vis_frames[0]] # tackle one at a time
+
+        last_query = non_vis_frames[0]
+
+        # --- run the tracker for every selected frame ---------------------
+        for query_index in query_frame_list:
+            new_track, new_vis = _forward_on_query(
+                query_index,
+                images,
+                fmaps_for_tracker,
+                cur_extractors,
+                tracker,
+                max_points_num,
+                fine_tracking,
+                device,
+            )
+            pred_tracks.append(new_track)
+            pred_vis_scores.append(new_vis)
+
+        if final_trial:
+            break                                   # stop after blast round
+
+    return pred_tracks, pred_vis_scores
