@@ -108,7 +108,17 @@ class TrackerPredictor(nn.Module):
                 coarse_pred_track,
                 compute_score=False,
             )
+            
+            from .track_modules.track_refine import refine_track_v0
+            fine_pred_track_v0, pred_score_v0 = refine_track_v0(
+                images,
+                self.fine_fnet,
+                self.fine_predictor,
+                coarse_pred_track,
+                compute_score=False,
+            )
 
+            import pdb; pdb.set_trace()
             if inference:
                 torch.cuda.empty_cache()
         else:

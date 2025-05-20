@@ -19,7 +19,184 @@ import os
 from typing import Union, Tuple
 
 
+
 def refine_track(
+    images,
+    fine_fnet,
+    fine_tracker,
+    coarse_pred,
+    compute_score=False,
+    pradius=15,
+    sradius=2,
+    fine_iters=6,
+):
+    """
+    Refines the tracking of images using a fine track predictor and a fine feature network.
+    Check https://arxiv.org/abs/2312.04563 for more details.
+
+    Args:
+        images (torch.Tensor): The images to be tracked.
+        fine_fnet (nn.Module): The fine feature network.
+        fine_tracker (nn.Module): The fine track predictor.
+        coarse_pred (torch.Tensor): The coarse predictions of tracks.
+        compute_score (bool, optional): Whether to compute the score. Defaults to False.
+        pradius (int, optional): The radius of a patch. Defaults to 15.
+        sradius (int, optional): The search radius. Defaults to 2.
+
+    Returns:
+        torch.Tensor: The refined tracks.
+        torch.Tensor, optional: The score.
+    """
+
+    # coarse_pred shape: BxSxNx2,
+    # where B is the batch, S is the video/images length, and N is the number of tracks
+    # now we are going to extract patches with the center at coarse_pred
+    # Please note that the last dimension indicates x and y, and hence has a dim number of 2
+    B, S, N, _ = coarse_pred.shape
+    _, _, _, H, W = images.shape
+
+    # Given the raidus of a patch, compute the patch size
+    psize = pradius * 2 + 1
+
+    # Note that we assume the first frame is the query frame
+    # so the 2D locations of the first frame are the query points
+    query_points = coarse_pred[:, 0]
+
+    # Given 2D positions, we can use grid_sample to extract patches
+    # but it takes too much memory.
+    # Instead, we use the floored track xy to sample patches.
+
+    # For example, if the query point xy is (128.16, 252.78),
+    # and the patch size is (31, 31),
+    # our goal is to extract the content of a rectangle
+    # with left top: (113.16, 237.78)
+    # and right bottom: (143.16, 267.78).
+    # However, we record the floored left top: (113, 237)
+    # and the offset (0.16, 0.78)
+    # Then what we need is just unfolding the images like in CNN,
+    # picking the content at [(113, 237), (143, 267)].
+    # Such operations are highly optimized at pytorch
+    # (well if you really want to use interpolation, check the function extract_glimpse() below)
+
+    if False:
+        with torch.no_grad():
+            content_to_extract = images.reshape(B * S, 3, H, W)
+            C_in = content_to_extract.shape[1]
+
+            # Please refer to https://pytorch.org/docs/stable/generated/torch.nn.Unfold.html
+            # for the detailed explanation of unfold()
+            # Here it runs sliding windows (psize x psize) to build patches
+            # The shape changes from
+            # (B*S)x C_in x H x W to (B*S)x C_in x H_new x W_new x Psize x Psize
+            # where Psize is the size of patch
+            content_to_extract = content_to_extract.unfold(2, psize, 1).unfold(
+                3, psize, 1
+            )
+
+    # Floor the coarse predictions to get integers and save the fractional/decimal
+    track_int = coarse_pred.floor().int()
+    track_frac = coarse_pred - track_int
+
+    # Note the points represent the center of patches
+    # now we get the location of the top left corner of patches
+    # because the ouput of pytorch unfold are indexed by top left corner
+    topleft = track_int - pradius
+    topleft_BSN = topleft.clone()
+
+    # clamp the values so that we will not go out of indexes
+    # NOTE: (VERY IMPORTANT: This operation ASSUMES H=W).
+    # You need to seperately clamp x and y if H!=W
+    topleft = topleft.clamp(0, H - psize)
+
+    # Reshape from BxSxNx2 -> (B*S)xNx2
+    topleft = topleft.reshape(B * S, N, 2)
+
+    # Prepare batches for indexing, shape: (B*S)xN
+    batch_indices = (
+        torch.arange(B * S)[:, None].expand(-1, N).to(content_to_extract.device)
+    )
+    
+    if False:
+        # Extract image patches based on top left corners
+        # extracted_patches: (B*S) x N x C_in x Psize x Psize
+        extracted_patches = content_to_extract[
+            batch_indices, :, topleft[..., 1], topleft[..., 0]
+        ]
+
+    # # Feed patches to fine fent for features
+    # patch_feat = fine_fnet(
+    #     extracted_patches.reshape(B * S * N, C_in, psize, psize)
+    # )
+
+    fmap  = fine_fnet(images.reshape(B*S, 3, H, W))
+    fmap_unfold = fmap.unfold(2, psize, 1).unfold(3, psize, 1)
+    
+    patch_feat = fmap_unfold[batch_indices, :, topleft[...,1], topleft[...,0]]
+    import pdb; pdb.set_trace()
+    patch_feat = patch_feat.reshape(B*S*N, C_out, psize, psize)
+
+    C_out = patch_feat.shape[1]
+
+    # Refine the coarse tracks by fine_tracker
+
+    # reshape back to B x S x N x C_out x Psize x Psize
+    patch_feat = patch_feat.reshape(B, S, N, C_out, psize, psize)
+    patch_feat = rearrange(patch_feat, "b s n c p q -> (b n) s c p q")
+
+    # Prepare for the query points for fine tracker
+    # They are relative to the patch left top corner,
+    # instead of the image top left corner now
+    # patch_query_points: N x 1 x 2
+    # only 1 here because for each patch we only have 1 query point
+    patch_query_points = track_frac[:, 0] + pradius
+    patch_query_points = patch_query_points.reshape(B * N, 2).unsqueeze(1)
+
+    # Feed the PATCH query points and tracks into fine tracker
+    fine_pred_track_lists, _, _, query_point_feat = fine_tracker(
+        query_points=patch_query_points,
+        fmaps=patch_feat,
+        iters=fine_iters,
+        return_feat=True,
+    )
+
+    # relative the patch top left
+    fine_pred_track = fine_pred_track_lists[-1].clone()
+
+    # From (relative to the patch top left) to (relative to the image top left)
+    for idx in range(len(fine_pred_track_lists)):
+        fine_level = rearrange(
+            fine_pred_track_lists[idx], "(b n) s u v -> b s n u v", b=B, n=N
+        )
+        fine_level = fine_level.squeeze(-2)
+        fine_level = fine_level + topleft_BSN
+        fine_pred_track_lists[idx] = fine_level
+
+    # relative to the image top left
+    refined_tracks = fine_pred_track_lists[-1].clone()
+    refined_tracks[:, 0] = query_points
+
+    score = None
+
+    if compute_score:
+        score = compute_score_fn(
+            query_point_feat,
+            patch_feat,
+            fine_pred_track,
+            sradius,
+            psize,
+            B,
+            N,
+            S,
+            C_out,
+        )
+
+    return refined_tracks, score
+
+
+
+
+
+def refine_track_v0(
     images,
     fine_fnet,
     fine_tracker,
