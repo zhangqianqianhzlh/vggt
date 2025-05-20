@@ -31,7 +31,7 @@ def refine_track(
     pradius=15,
     sradius=2,
     fine_iters=6,
-    chunk = 4096,
+    chunk=10240,
 ):
     """
     Refines the tracking of images using a fine track predictor and a fine feature network.
@@ -125,9 +125,18 @@ def refine_track(
     ]
 
     # Feed patches to fine fent for features
-    patch_feat = fine_fnet(
-        extracted_patches.reshape(B * S * N, C_in, psize, psize)
-    )
+    # patch_feat = fine_fnet(
+    #     extracted_patches.reshape(B * S * N, C_in, psize, psize)
+    # )
+
+    patches = extracted_patches.reshape(B*S*N, C_in, psize, psize)
+
+    patch_feat_list = []
+    for p in torch.split(patches, chunk):
+        patch_feat_list += [fine_fnet(p).to(patches.dtype)]
+    patch_feat = torch.cat(patch_feat_list, 0)
+
+    import pdb;pdb.set_trace()
 
     C_out = patch_feat.shape[1]
 
@@ -185,7 +194,6 @@ def refine_track(
         )
 
     return refined_tracks, score
-
 
 
 
@@ -290,19 +298,10 @@ def refine_track_v0(
         batch_indices, :, topleft[..., 1], topleft[..., 0]
     ]
 
-
-    patches = extracted_patches.reshape(B*S*N, C_in, psize, psize)
-
-    patch_feat_list = []
-    for p in torch.split(patches, chunk):
-        patch_feat_list += [fine_fnet(p).to(patches.dtype)]
-    patch_feat = torch.cat(patch_feat_list, 0)
-
-    import pdb;pdb.set_trace()
     # Feed patches to fine fent for features
-    # patch_feat = fine_fnet(
-    #     extracted_patches.reshape(B * S * N, C_in, psize, psize)
-    # )
+    patch_feat = fine_fnet(
+        extracted_patches.reshape(B * S * N, C_in, psize, psize)
+    )
 
     C_out = patch_feat.shape[1]
 
