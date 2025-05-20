@@ -22,6 +22,7 @@ from typing import Union, Tuple
 
 
 
+
 def refine_track(
     images,
     fine_fnet,
@@ -118,30 +119,29 @@ def refine_track(
         torch.arange(B * S)[:, None].expand(-1, N).to(content_to_extract.device)
     )
 
-    # Extract image patches based on top left corners
-    # extracted_patches: (B*S) x N x C_in x Psize x Psize
-    extracted_patches = content_to_extract[
-        batch_indices, :, topleft[..., 1], topleft[..., 0]
-    ]
 
-    # Feed patches to fine fent for features
-    # patch_feat = fine_fnet(
-    #     extracted_patches.reshape(B * S * N, C_in, psize, psize)
-    # )
+    if chunk < 0:
+        # Extract image patches based on top left corners
+        # extracted_patches: (B*S) x N x C_in x Psize x Psize
+        extracted_patches = content_to_extract[
+            batch_indices, :, topleft[..., 1], topleft[..., 0]
+        ]
 
-    patches = extracted_patches.reshape(B*S*N, C_in, psize, psize)
+        Feed patches to fine fent for features
+        patch_feat = fine_fnet(
+            extracted_patches.reshape(B * S * N, C_in, psize, psize)
+        )
+    else:
+        patches = extracted_patches.reshape(B*S*N, C_in, psize, psize)
 
-    patch_feat_list = []
-    for p in torch.split(patches, chunk):
-        patch_feat_list += [fine_fnet(p).to(patches.dtype)]
-    patch_feat = torch.cat(patch_feat_list, 0)
-
-    import pdb;pdb.set_trace()
+        patch_feat_list = []
+        for p in torch.split(patches, chunk):
+            patch_feat_list += [fine_fnet(p)]
+        patch_feat = torch.cat(patch_feat_list, 0)
 
     C_out = patch_feat.shape[1]
 
     # Refine the coarse tracks by fine_tracker
-
     # reshape back to B x S x N x C_out x Psize x Psize
     patch_feat = patch_feat.reshape(B, S, N, C_out, psize, psize)
     patch_feat = rearrange(patch_feat, "b s n c p q -> (b n) s c p q")
