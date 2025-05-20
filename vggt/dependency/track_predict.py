@@ -9,7 +9,8 @@ from vggt.dependency.vggsfm_utils import *
 
 
 def predict_tracks(images, masks=None, max_query_pts=2048, query_frame_num=5,
-                   keypoint_extractor="aliked+sp", max_points_num=81920, fine_tracking=True):
+                   keypoint_extractor="aliked+sp", 
+                   max_points_num=81920, fine_tracking=True):
 
     """
     Predict tracks for the given images and masks.
@@ -19,6 +20,8 @@ def predict_tracks(images, masks=None, max_query_pts=2048, query_frame_num=5,
 
     images: [S, 3, H, W]
     masks: [S, 1, H, W]
+    
+    # 163840/81920
     """
 
     frame_num, _, height, width = images.shape
@@ -49,7 +52,8 @@ def predict_tracks(images, masks=None, max_query_pts=2048, query_frame_num=5,
 
     for query_index in query_frame_indexes:
         query_image = images[query_index]
-        query_points = extract_keypoints(query_image, keypoint_extractors)
+        query_points = extract_keypoints(query_image, keypoint_extractors, round_keypoints=False)
+        query_points = query_points[:, torch.randperm(query_points.shape[1], device=device)]
 
         reorder_index = calculate_index_mappings(query_index, frame_num, device=device)
         reorder_images = switch_tensor_order([images], reorder_index, dim=0)[0]
@@ -60,8 +64,11 @@ def predict_tracks(images, masks=None, max_query_pts=2048, query_frame_num=5,
     
         all_points_num = images_feed.shape[1] * query_points.shape[1]
 
-        # if all_points_num > max_points_num:
-
+        if all_points_num > max_points_num:
+            num_splits = (all_points_num + max_points_num - 1) // max_points_num
+            query_points = torch.chunk(query_points, num_splits, dim=1)
+        else:
+            query_points = [query_points]
 
         pred_track, pred_vis, _ = predict_tracks_in_chunks(
             tracker,
@@ -74,9 +81,10 @@ def predict_tracks(images, masks=None, max_query_pts=2048, query_frame_num=5,
 
         # shuffle_indices = torch.randperm(pred_track.size(2))
         # pred_track = pred_track[:, :, shuffle_indices]
-
-        # from vggt.utils.visual_track import visualize_tracks_on_images
-        # visualize_tracks_on_images(images_feed, pred_track, pred_vis>0.2, out_dir="track_visuals")
+        import pdb;pdb.set_trace()
+        
+        from vggt.utils.visual_track import visualize_tracks_on_images
+        visualize_tracks_on_images(images_feed, pred_track[:,:, :1000], pred_vis[:,:, :1000]>0.2, out_dir="track_visuals")
         import pdb;pdb.set_trace()
 
 
