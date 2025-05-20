@@ -123,6 +123,8 @@ def refine_track(
     extracted_patches = content_to_extract[
         batch_indices, :, topleft[..., 1], topleft[..., 0]
     ]
+    
+    print("Using chunk size: ", chunk)
 
     if chunk < 0:
         # Extract image patches based on top left corners
