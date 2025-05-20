@@ -47,7 +47,9 @@ def predict_tracks(images, masks=None, max_query_pts=2048, query_frame_num=5,
     fmaps_for_tracker = tracker.process_images_to_fmaps(images)
 
 
+    print("For faster inference, please disable fine_tracking") 
     for query_index in query_frame_indexes:
+        print(f"Predicting tracks for query frame {query_index}")
         query_image = images[query_index]
         query_points = extract_keypoints(query_image, keypoint_extractors, round_keypoints=False)
         query_points = query_points[:, torch.randperm(query_points.shape[1], device=device)]
@@ -81,23 +83,14 @@ def predict_tracks(images, masks=None, max_query_pts=2048, query_frame_num=5,
         )
 
         # remove batch dimension and convert to numpy
-        pred_tracks.append(pred_track[0].cpu().numpy())
-        pred_vis_scores.append(pred_vis[0].cpu().numpy())
+        # Convert from BFloat16 to Float32 before converting to numpy
+        pred_tracks.append(pred_track[0].to(torch.float32).cpu().numpy())
+        pred_vis_scores.append(pred_vis[0].to(torch.float32).cpu().numpy())
         
+        
+    pred_tracks = np.concatenate(pred_tracks, axis=1)
+    pred_vis_scores = np.concatenate(pred_vis_scores, axis=1)
+
     import pdb;pdb.set_trace()
+    return pred_tracks, pred_vis_scores
 
-    from vggt.utils.visual_track import visualize_tracks_on_images
-    visualize_tracks_on_images(images_feed, pred_track[:,:, :1000], pred_vis[:,:, :1000]>0.2, out_dir="track_visuals")
-
-
-
-    # Find query frames
-    # Find query points
-    # Predict tracks
-
-
-
-
-
-    return None # placeholder
-    #
