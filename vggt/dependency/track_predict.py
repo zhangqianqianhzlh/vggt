@@ -31,6 +31,7 @@ def predict_tracks(images, conf=None, masks=None, max_query_pts=2048, query_fram
     Returns:
         pred_tracks: Numpy array containing the predicted tracks.
         pred_vis_scores: Numpy array containing the visibility scores for the tracks.
+        pred_confs: Numpy array containing the confidence scores for the tracks.
     """
 
     device = images.device
@@ -52,6 +53,7 @@ def predict_tracks(images, conf=None, masks=None, max_query_pts=2048, query_fram
 
     pred_tracks = []
     pred_vis_scores = []
+    pred_confs = []
 
     fmaps_for_tracker = tracker.process_images_to_fmaps(images)
 
@@ -60,18 +62,20 @@ def predict_tracks(images, conf=None, masks=None, max_query_pts=2048, query_fram
         
     for query_index in query_frame_indexes:
         print(f"Predicting tracks for query frame {query_index}")
-        pred_track, pred_vis = _forward_on_query(
+        pred_track, pred_vis, pred_conf = _forward_on_query(
             query_index, images, conf, fmaps_for_tracker, keypoint_extractors,
             tracker, max_points_num, fine_tracking, device
         )
 
         pred_tracks.append(pred_track)
         pred_vis_scores.append(pred_vis)
+        pred_confs.append(pred_conf)
 
     if complete_non_vis:
-        pred_tracks, pred_vis_scores = _augment_non_visible_frames(
+        pred_tracks, pred_vis_scores, pred_confs = _augment_non_visible_frames(
             pred_tracks,
             pred_vis_scores,
+            pred_confs,
             images,
             fmaps_for_tracker,
             keypoint_extractors,
@@ -85,11 +89,12 @@ def predict_tracks(images, conf=None, masks=None, max_query_pts=2048, query_fram
     
     pred_tracks = np.concatenate(pred_tracks, axis=1)
     pred_vis_scores = np.concatenate(pred_vis_scores, axis=1)
+    pred_confs = np.concatenate(pred_confs, axis=1) if pred_confs else None
     
     # from vggt.utils.visual_track import visualize_tracks_on_images
     # visualize_tracks_on_images(images[None], torch.from_numpy(pred_tracks[None]), torch.from_numpy(pred_vis_scores[None])>0.2, out_dir="track_visuals")
 
-    return pred_tracks, pred_vis_scores
+    return pred_tracks, pred_vis_scores, pred_confs
 
 
 def _forward_on_query(query_index, images, conf, fmaps_for_tracker, keypoint_extractors, 
@@ -111,21 +116,23 @@ def _forward_on_query(query_index, images, conf, fmaps_for_tracker, keypoint_ext
     Returns:
         pred_track: Predicted tracks
         pred_vis: Visibility scores for the tracks
+        pred_conf: Confidence scores for the tracks
     """
     frame_num, _, height, width = images.shape
 
     query_image = images[query_index]
     query_points = extract_keypoints(query_image, keypoint_extractors, round_keypoints=False)
+    query_points = query_points[:, torch.randperm(query_points.shape[1], device=device)]
     
     if conf is not None:
-        # query_points_long = query_points.squeeze(0).round().long()
-
-        # query_conf = conf[query_index]
-        
-        import pdb; pdb.set_trace()
-    
-    
-    query_points = query_points[:, torch.randperm(query_points.shape[1], device=device)]
+        query_points_long = query_points.squeeze(0).round().long()
+        pred_conf = conf[query_index][query_points_long[:, 1], query_points_long[:, 0]]
+        valid_conf_mask = pred_conf > 1.05   # hardcoded threshold
+        if valid_conf_mask.sum() > 512:
+            query_points = query_points[:, valid_conf_mask]
+            pred_conf = pred_conf[valid_conf_mask]
+    else:
+        pred_conf = None
 
     reorder_index = calculate_index_mappings(query_index, frame_num, device=device)
     reorder_images = switch_tensor_order([images], reorder_index, dim=0)[0]
@@ -157,7 +164,8 @@ def _forward_on_query(query_index, images, conf, fmaps_for_tracker, keypoint_ext
     
     pred_track = pred_track.squeeze(0).float().cpu().numpy()
     pred_vis = pred_vis.squeeze(0).float().cpu().numpy()
-    return pred_track, pred_vis
+    pred_conf = pred_conf.float().cpu().numpy()
+    return pred_track, pred_vis, pred_conf
 
 
 
@@ -165,6 +173,7 @@ def _forward_on_query(query_index, images, conf, fmaps_for_tracker, keypoint_ext
 def _augment_non_visible_frames(
         pred_tracks:       list,          # ← running list of np.ndarrays
         pred_vis_scores:   list,          # ← running list of np.ndarrays
+        pred_confs:        list,          # ← running list of np.ndarrays for confidence scores
         images:            torch.Tensor,
         fmaps_for_tracker: torch.Tensor,
         keypoint_extractors,
@@ -177,6 +186,24 @@ def _augment_non_visible_frames(
         device:         torch.device = None,
 ):
     """
+    Augment tracking for frames with insufficient visibility.
+    
+    Args:
+        pred_tracks: List of numpy arrays containing predicted tracks.
+        pred_vis_scores: List of numpy arrays containing visibility scores.
+        pred_confs: List of numpy arrays containing confidence scores.
+        images: Tensor of shape [S, 3, H, W] containing the input images.
+        fmaps_for_tracker: Feature maps for the tracker
+        keypoint_extractors: Initialized feature extractors
+        tracker: VGG-SFM tracker
+        max_points_num: Maximum number of points to process at once
+        fine_tracking: Whether to use fine tracking
+        min_vis: Minimum visibility threshold
+        non_vis_thresh: Non-visibility threshold
+        device: Device to use for computation
+    
+    Returns:
+        Updated pred_tracks, pred_vis_scores, and pred_confs lists.
     """
     last_query   = -1
     final_trial  = False
@@ -212,7 +239,7 @@ def _augment_non_visible_frames(
 
         # --- run the tracker for every selected frame ---------------------
         for query_index in query_frame_list:
-            new_track, new_vis = _forward_on_query(
+            new_track, new_vis, new_conf = _forward_on_query(
                 query_index,
                 images,
                 fmaps_for_tracker,
@@ -224,8 +251,9 @@ def _augment_non_visible_frames(
             )
             pred_tracks.append(new_track)
             pred_vis_scores.append(new_vis)
+            pred_confs.append(new_conf)
 
         if final_trial:
             break                                   # stop after blast round
 
-    return pred_tracks, pred_vis_scores
+    return pred_tracks, pred_vis_scores, pred_confs
