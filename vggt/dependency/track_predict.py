@@ -60,42 +60,16 @@ def predict_tracks(images, masks=None, max_query_pts=2048, query_frame_num=5,
         
     for query_index in query_frame_indexes:
         print(f"Predicting tracks for query frame {query_index}")
-        query_image = images[query_index]
-        query_points = extract_keypoints(query_image, keypoint_extractors, round_keypoints=False)
-        query_points = query_points[:, torch.randperm(query_points.shape[1], device=device)]
+        pred_track, pred_vis = _forward_on_query(
+            query_index, images, fmaps_for_tracker, keypoint_extractors, frame_num, 
+            tracker, max_points_num, fine_tracking, device
+        )
 
-        reorder_index = calculate_index_mappings(query_index, frame_num, device=device)
-        reorder_images = switch_tensor_order([images], reorder_index, dim=0)[0]
+        pred_tracks.append(pred_track)
+        pred_vis_scores.append(pred_vis)
 
-        images_feed, fmaps_feed = switch_tensor_order([images, fmaps_for_tracker], reorder_index, dim=0)
-        images_feed = images_feed[None]  # add batch dimension
-        fmaps_feed = fmaps_feed[None]  # add batch dimension
+    # TODO complete non vis
     
-        all_points_num = images_feed.shape[1] * query_points.shape[1]
-
-        # Don't need to be scared, this is just chunking to make GPU happy
-        if all_points_num > max_points_num:
-            num_splits = (all_points_num + max_points_num - 1) // max_points_num
-            query_points = torch.chunk(query_points, num_splits, dim=1)
-        else:
-            query_points = [query_points]
-
-        pred_track, pred_vis, _ = predict_tracks_in_chunks(
-            tracker,
-            images_feed,
-            query_points,
-            fmaps_feed,
-            fine_tracking=fine_tracking,
-        )
-
-        pred_track, pred_vis = switch_tensor_order(
-            [pred_track, pred_vis], reorder_index, dim=1
-        )
-
-        # Convert from BFloat16 to Float32 before converting to numpy
-        pred_tracks.append(pred_track[0].to(torch.float32).cpu().numpy())
-        pred_vis_scores.append(pred_vis[0].to(torch.float32).cpu().numpy())
-        
     pred_tracks = np.concatenate(pred_tracks, axis=1)
     pred_vis_scores = np.concatenate(pred_vis_scores, axis=1)
     
@@ -103,6 +77,63 @@ def predict_tracks(images, masks=None, max_query_pts=2048, query_frame_num=5,
     # visualize_tracks_on_images(images[None], torch.from_numpy(pred_tracks[None]), torch.from_numpy(pred_vis_scores[None])>0.2, out_dir="track_visuals")
 
     return pred_tracks, pred_vis_scores
+
+
+def _forward_on_query(query_index, images, fmaps_for_tracker, keypoint_extractors, 
+                     frame_num, tracker, max_points_num, fine_tracking, device):
+    """
+    Process a single query frame for track prediction.
+    
+    Args:
+        query_index: Index of the query frame
+        images: Tensor of shape [S, 3, H, W] containing the input images
+        fmaps_for_tracker: Feature maps for the tracker
+        keypoint_extractors: Initialized feature extractors
+        frame_num: Number of frames
+        tracker: VGG-SFM tracker
+        max_points_num: Maximum number of points to process at once
+        fine_tracking: Whether to use fine tracking
+        device: Device to use for computation
+    
+    Returns:
+        pred_track: Predicted tracks
+        pred_vis: Visibility scores for the tracks
+    """
+    query_image = images[query_index]
+    query_points = extract_keypoints(query_image, keypoint_extractors, round_keypoints=False)
+    query_points = query_points[:, torch.randperm(query_points.shape[1], device=device)]
+
+    reorder_index = calculate_index_mappings(query_index, frame_num, device=device)
+    reorder_images = switch_tensor_order([images], reorder_index, dim=0)[0]
+
+    images_feed, fmaps_feed = switch_tensor_order([images, fmaps_for_tracker], reorder_index, dim=0)
+    images_feed = images_feed[None]  # add batch dimension
+    fmaps_feed = fmaps_feed[None]  # add batch dimension
+
+    all_points_num = images_feed.shape[1] * query_points.shape[1]
+
+    # Don't need to be scared, this is just chunking to make GPU happy
+    if all_points_num > max_points_num:
+        num_splits = (all_points_num + max_points_num - 1) // max_points_num
+        query_points = torch.chunk(query_points, num_splits, dim=1)
+    else:
+        query_points = [query_points]
+
+    pred_track, pred_vis, _ = predict_tracks_in_chunks(
+        tracker,
+        images_feed,
+        query_points,
+        fmaps_feed,
+        fine_tracking=fine_tracking,
+    )
+
+    pred_track, pred_vis = switch_tensor_order(
+        [pred_track, pred_vis], reorder_index, dim=1
+    )
+    
+    pred_track = pred_track.squeeze(0).float().cpu().numpy()
+    pred_vis = pred_vis.squeeze(0).float().cpu().numpy()
+    return pred_track, pred_vis
 
 
 
