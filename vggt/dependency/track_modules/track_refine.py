@@ -119,15 +119,14 @@ def refine_track(
         torch.arange(B * S)[:, None].expand(-1, N).to(content_to_extract.device)
     )
 
+    # extracted_patches: (B*S) x N x C_in x Psize x Psize
+    extracted_patches = content_to_extract[
+        batch_indices, :, topleft[..., 1], topleft[..., 0]
+    ]
 
     if chunk < 0:
         # Extract image patches based on top left corners
-        # extracted_patches: (B*S) x N x C_in x Psize x Psize
-        extracted_patches = content_to_extract[
-            batch_indices, :, topleft[..., 1], topleft[..., 0]
-        ]
-
-        Feed patches to fine fent for features
+        # Feed patches to fine fent for features
         patch_feat = fine_fnet(
             extracted_patches.reshape(B * S * N, C_in, psize, psize)
         )
