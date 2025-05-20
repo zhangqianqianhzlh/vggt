@@ -9,7 +9,7 @@ from vggt.dependency.vggsfm_utils import *
 
 
 def predict_tracks(images, masks=None, max_query_pts=2048, query_frame_num=5,
-                   keypoint_extractor="aliked+sp", max_points_num=163840, fine_tracking=True):
+                   keypoint_extractor="aliked+sp", max_points_num=81920, fine_tracking=True):
 
     """
     Predict tracks for the given images and masks.
@@ -55,21 +55,31 @@ def predict_tracks(images, masks=None, max_query_pts=2048, query_frame_num=5,
         reorder_images = switch_tensor_order([images], reorder_index, dim=0)[0]
 
         images_feed, fmaps_feed = switch_tensor_order([images, fmaps_for_tracker], reorder_index, dim=0)
+        images_feed = images_feed[None] # add batch dimension
+        fmaps_feed = fmaps_feed[None] # add batch dimension
+    
+        all_points_num = images_feed.shape[1] * query_points.shape[1]
 
-        # all_points_num = images_feed.shape[1] * query_points.shape[1]
+        # if all_points_num > max_points_num:
 
 
-        pred_track, _, pred_vis, _ = tracker(
-            images_feed[None],
+        pred_track, pred_vis, _ = predict_tracks_in_chunks(
+            tracker,
+            images_feed,
             query_points,
-            fmaps=fmaps_feed[None],
+            fmaps_feed,
             fine_tracking=fine_tracking,
         )
 
 
+        # shuffle_indices = torch.randperm(pred_track.size(2))
+        # pred_track = pred_track[:, :, shuffle_indices]
 
-
+        # from vggt.utils.visual_track import visualize_tracks_on_images
+        # visualize_tracks_on_images(images_feed, pred_track, pred_vis>0.2, out_dir="track_visuals")
         import pdb;pdb.set_trace()
+
+
 
 
     # Find query frames
