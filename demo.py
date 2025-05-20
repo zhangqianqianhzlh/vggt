@@ -117,7 +117,8 @@ def demo_fn(args):
     
     if args.use_ba:
         from vggt.dependency.track_predict import predict_tracks
-        predict_tracks(images, masks=None, max_query_pts=2048, )
+        with torch.cuda.amp.autocast(dtype=dtype):
+            predict_tracks(images, masks=None, max_query_pts=2048, )
     
     
     # from vggt.dependency.track_predict import predict_track, build_vggsfm_tracker

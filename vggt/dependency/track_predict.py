@@ -66,6 +66,11 @@ def predict_tracks(images, masks=None, max_query_pts=2048, query_frame_num=5,
             fine_tracking=fine_tracking,
         )
 
+        # from vggt.utils.visual_track import visualize_tracks_on_images
+        # visualize_tracks_on_images(images_feed[None], pred_track, pred_vis>0.2, out_dir="track_visuals")
+
+
+
         import pdb;pdb.set_trace()
 
     

@@ -124,7 +124,7 @@ def refine_track(
     patch_feat = fine_fnet(
         extracted_patches.reshape(B * S * N, C_in, psize, psize)
     )
-
+    import pdb; pdb.set_trace()
     C_out = patch_feat.shape[1]
 
     # Refine the coarse tracks by fine_tracker

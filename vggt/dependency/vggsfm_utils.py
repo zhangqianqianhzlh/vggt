@@ -282,32 +282,37 @@ def extract_keypoints(query_image, extractors, round_keypoints=True):
 def predict_tracks_in_chunks(
     track_predictor,
     images_feed,
-    query_points,
+    query_points_list,
     fmaps_feed,
     fine_tracking,
-    num_splits,
+    num_splits=None,
 ):
     """
-    Process query points in smaller chunks to avoid memory issues.
+    Process a list of query points to avoid memory issues.
 
     Args:
         track_predictor (object): The track predictor object used for predicting tracks.
         images_feed (torch.Tensor): A tensor of shape (B, T, C, H, W) representing a batch of images.
-        query_points (torch.Tensor): A tensor of shape (B, N, 2) representing the query points.
+        query_points_list (list): A list of tensors, each of shape (B, Ni, 2) representing chunks of query points.
         fmaps_feed (torch.Tensor): A tensor of feature maps for the tracker.
         fine_tracking (bool): Whether to perform fine tracking.
-        num_splits (int): The number of chunks to split the query points into.
+        num_splits (int, optional): Ignored when query_points_list is provided. Kept for backward compatibility.
 
     Returns:
         tuple: A tuple containing the concatenated predicted tracks, visibility, and scores.
     """
-    split_query_points = torch.chunk(query_points, num_splits, dim=1)
+    # If query_points_list is not a list but a single tensor, handle it like the old version for backward compatibility
+    if not isinstance(query_points_list, list):
+        query_points = query_points_list
+        if num_splits is None:
+            num_splits = 1
+        query_points_list = torch.chunk(query_points, num_splits, dim=1)
 
     fine_pred_track_list = []
     pred_vis_list = []
     pred_score_list = []
 
-    for split_points in split_query_points:
+    for split_points in query_points_list:
         # Feed into track predictor for each split
         fine_pred_track, _, pred_vis, pred_score = track_predictor(
             images_feed,
@@ -322,6 +327,7 @@ def predict_tracks_in_chunks(
     # Concatenate the results from all splits
     fine_pred_track = torch.cat(fine_pred_track_list, dim=2)
     pred_vis = torch.cat(pred_vis_list, dim=2)
+    
     if pred_score is not None:
         pred_score = torch.cat(pred_score_list, dim=2)
     else:
