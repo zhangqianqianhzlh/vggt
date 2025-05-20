@@ -20,8 +20,6 @@ def predict_tracks(images, masks=None, max_query_pts=2048, query_frame_num=5,
 
     images: [S, 3, H, W]
     masks: [S, 1, H, W]
-    
-    # 163840/81920
     """
 
     frame_num, _, height, width = images.shape
@@ -45,7 +43,6 @@ def predict_tracks(images, masks=None, max_query_pts=2048, query_frame_num=5,
 
     pred_tracks = []
     pred_vis_scores = []
-    pred_conf_scores = []
 
     fmaps_for_tracker = tracker.process_images_to_fmaps(images)
 
@@ -79,16 +76,18 @@ def predict_tracks(images, masks=None, max_query_pts=2048, query_frame_num=5,
             fine_tracking=fine_tracking,
         )
 
+        pred_track, pred_vis = switch_tensor_order(
+            [pred_track, pred_vis], reorder_index, dim=1
+        )
 
-
-        # shuffle_indices = torch.randperm(pred_track.size(2))
-        # pred_track = pred_track[:, :, shuffle_indices]
-        import pdb;pdb.set_trace()
+        # remove batch dimension and convert to numpy
+        pred_tracks.append(pred_track[0].cpu().numpy())
+        pred_vis_scores.append(pred_vis[0].cpu().numpy())
         
-        from vggt.utils.visual_track import visualize_tracks_on_images
-        visualize_tracks_on_images(images_feed, pred_track[:,:, :1000], pred_vis[:,:, :1000]>0.2, out_dir="track_visuals")
-        import pdb;pdb.set_trace()
+    import pdb;pdb.set_trace()
 
+    from vggt.utils.visual_track import visualize_tracks_on_images
+    visualize_tracks_on_images(images_feed, pred_track[:,:, :1000], pred_vis[:,:, :1000]>0.2, out_dir="track_visuals")
 
 
 

@@ -123,8 +123,6 @@ def refine_track(
     extracted_patches = content_to_extract[
         batch_indices, :, topleft[..., 1], topleft[..., 0]
     ]
-    
-    print("Using chunk size: ", chunk)
 
     if chunk < 0:
         # Extract image patches based on top left corners
@@ -209,6 +207,8 @@ def refine_track_v0(
     fine_iters=6,
 ):
     """
+    COPIED FROM VGGSfM
+    
     Refines the tracking of images using a fine track predictor and a fine feature network.
     Check https://arxiv.org/abs/2312.04563 for more details.
 
