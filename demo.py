@@ -23,7 +23,7 @@ from vggt.models.vggt import VGGT
 from vggt.utils.load_fn import load_and_preprocess_images_square
 from vggt.utils.pose_enc import pose_encoding_to_extri_intri
 from vggt.utils.geometry import unproject_depth_map_to_point_map
-
+from vggt.dependency.track_predict import predict_tracks
 
 def parse_args():
     parser = argparse.ArgumentParser(description='VGGT Demo')
@@ -116,10 +116,12 @@ def demo_fn(args):
     # Will be fixed in VGGT v2
     
     if args.use_ba:
-        from vggt.dependency.track_predict import predict_tracks
         with torch.cuda.amp.autocast(dtype=dtype):
-            predict_tracks(images, masks=None, max_query_pts=2048, )
-    
+            pred_tracks, pred_vis_scores = predict_tracks(images, masks=None, max_query_pts=2048, query_frame_num=5, keypoint_extractor="aliked+sp", max_points_num=163840, fine_tracking=True)
+            torch.cuda.empty_cache()
+            
+            # Step 2: Filter out tracks based on visibility scores and depth confidence
+            # Step 3: 
     
     # from vggt.dependency.track_predict import predict_track, build_vggsfm_tracker
     import pdb; pdb.set_trace()

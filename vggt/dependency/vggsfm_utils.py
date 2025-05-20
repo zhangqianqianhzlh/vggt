@@ -174,42 +174,6 @@ def switch_tensor_order(tensors, order, dim=1):
     ]
 
 
-# def predict_track(model, images, query_points, dtype=torch.bfloat16, use_tf32_for_track=True, iters=4):
-#     """
-#     Predict tracks for query points across frames.
-
-#     Args:
-#         model: VGGT model
-#         images: Tensor of images of shape (S, 3, H, W)
-#         query_points: Query points to track
-#         dtype: Data type for computation
-#         use_tf32_for_track: Whether to use TF32 precision for tracking
-#         iters: Number of iterations for tracking
-
-#     Returns:
-#         Predicted tracks, visibility scores, and confidence scores
-#     """
-#     with torch.no_grad():
-#         with torch.cuda.amp.autocast(dtype=dtype):
-#             images = images[None]  # add batch dimension
-#             aggregated_tokens_list, ps_idx = model.aggregator(images)
-
-#             if not use_tf32_for_track:
-#                 track_list, vis_score, conf_score = model.track_head(
-#                     aggregated_tokens_list, images, ps_idx, query_points=query_points, iters=iters
-#                 )
-
-#         if use_tf32_for_track:
-#             with torch.cuda.amp.autocast(enabled=False):
-#                 track_list, vis_score, conf_score = model.track_head(
-#                     aggregated_tokens_list, images, ps_idx, query_points=query_points, iters=iters
-#                 )
-
-#     pred_track = track_list[-1]
-
-#     return pred_track.squeeze(0), vis_score.squeeze(0), conf_score.squeeze(0)
-
-
 def initialize_feature_extractors(max_query_num, det_thres=0.005, extractor_method="aliked", device="cuda"):
     """
     Initialize feature extractors that can be reused based on a method string.
