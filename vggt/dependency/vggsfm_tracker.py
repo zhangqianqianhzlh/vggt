@@ -64,7 +64,7 @@ class TrackerPredictor(nn.Module):
         coarse_iters=6,
         inference=True,
         fine_tracking=True,
-        fine_chunk=10240,
+        fine_chunk=40960,
     ):
         """
         Args:

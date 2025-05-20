@@ -64,123 +64,30 @@ def predict_tracks(images, masks=None, max_query_pts=2048, query_frame_num=5,
     
         all_points_num = images_feed.shape[1] * query_points.shape[1]
 
+        # Don't need to be scared, this is just chunking to make GPU happy
         if all_points_num > max_points_num:
             num_splits = (all_points_num + max_points_num - 1) // max_points_num
             query_points = torch.chunk(query_points, num_splits, dim=1)
         else:
             query_points = [query_points]
 
-        #########################################################
-        # Grid search for optimal fine_chunk value
-        import time
-        import statistics
-        
-        # Make sure previous operations are completed
-        torch.cuda.synchronize()
-        
-        # Define the grid of fine_chunk values to test
-        fine_chunk_values = [-1, 1024, 4096, 10240, 20480, 40960]
-        
-        # Dictionary to store results for each value
-        results = {}
-        
-        print("Starting grid search for optimal fine_chunk value...")
-        
-        # For tracking the best performance
-        best_time = float('inf')
-        best_fine_chunk = None
-        all_tracks = []
-        all_vis = []
-        
-        # Run benchmark for each fine_chunk value
-        for fine_chunk in fine_chunk_values:
-            times = []
-            
-            print(f"\nTesting fine_chunk={fine_chunk}")
-            
-            # Run 10 times for each value
-            for run in range(10):
-                torch.cuda.synchronize()
-                start_event = torch.cuda.Event(enable_timing=True)
-                end_event = torch.cuda.Event(enable_timing=True)
-                
-                start_event.record()
-                pred_track_temp, pred_vis_temp, extra_temp = predict_tracks_in_chunks(
-                    tracker,
-                    images_feed,
-                    query_points,
-                    fmaps_feed,
-                    fine_tracking=fine_tracking,
-                    fine_chunk=fine_chunk,
-                )
-                end_event.record()
-                
-                torch.cuda.synchronize()
-                elapsed_time = start_event.elapsed_time(end_event) / 1000  # convert to seconds
-                times.append(elapsed_time)
-                print(f"  Run {run+1}/10: {elapsed_time:.4f} seconds")
-            
-            # Save the last prediction for comparison
-            all_tracks.append(pred_track_temp)
-            all_vis.append(pred_vis_temp)
-            
-            # Calculate statistics
-            avg_time = statistics.mean(times)
-            std_time = statistics.stdev(times) if len(times) > 1 else 0
-            
-            # Store results
-            results[fine_chunk] = {
-                'avg_time': avg_time,
-                'std_time': std_time,
-                'times': times
-            }
-            
-            # Update best performer
-            if avg_time < best_time:
-                best_time = avg_time
-                best_fine_chunk = fine_chunk
-        
-        # Print summary results
-        print("\n===== Grid Search Results =====")
-        print(f"{'fine_chunk':<10} | {'avg_time (s)':<12} | {'std_dev (s)':<12}")
-        print("-" * 40)
-        
-        for fine_chunk in fine_chunk_values:
-            res = results[fine_chunk]
-            print(f"{fine_chunk:<10} | {res['avg_time']:<12.4f} | {res['std_time']:<12.4f}")
-        
-        print("\nBest fine_chunk value:", best_fine_chunk)
-        print(f"Best average time: {best_time:.4f} seconds")
-        
-        # Verify all results are equivalent
-        print("\nVerifying result consistency...")
-        all_results_equal = True
-        
-        for i in range(1, len(fine_chunk_values)):
-            tracks_equal = torch.allclose(all_tracks[0], all_tracks[i], atol=1e-5)
-            vis_equal = torch.allclose(all_vis[0], all_vis[i], atol=1e-5)
-            
-            if not (tracks_equal and vis_equal):
-                all_results_equal = False
-                print(f"Warning: Results for fine_chunk={fine_chunk_values[i]} differ from fine_chunk={fine_chunk_values[0]}")
-        
-        if all_results_equal:
-            print("All configurations produce equivalent results!")
-        
-        # Use the results from the best configuration
-        best_idx = fine_chunk_values.index(best_fine_chunk)
-        pred_track, pred_vis = all_tracks[best_idx], all_vis[best_idx]
-        
-        print(f"\nUsing results from best configuration (fine_chunk={best_fine_chunk})")
-        #########################################################
-        
+        pred_track, pred_vis, _ = predict_tracks_in_chunks(
+            tracker,
+            images_feed,
+            query_points,
+            fmaps_feed,
+            fine_tracking=fine_tracking,
+        )
+
+
+
+        # shuffle_indices = torch.randperm(pred_track.size(2))
+        # pred_track = pred_track[:, :, shuffle_indices]
         import pdb;pdb.set_trace()
-        # Comment out the debugging code for benchmarking
-        # import pdb;pdb.set_trace()
         
-        # from vggt.utils.visual_track import visualize_tracks_on_images
-        # visualize_tracks_on_images(images_feed, pred_track[:,:, :1000], pred_vis[:,:, :1000]>0.2, out_dir="track_visuals")
-        # import pdb;pdb.set_trace()
+        from vggt.utils.visual_track import visualize_tracks_on_images
+        visualize_tracks_on_images(images_feed, pred_track[:,:, :1000], pred_vis[:,:, :1000]>0.2, out_dir="track_visuals")
+        import pdb;pdb.set_trace()
 
 
 

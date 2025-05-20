@@ -286,7 +286,7 @@ def predict_tracks_in_chunks(
     fmaps_feed,
     fine_tracking,
     num_splits=None,
-    fine_chunk=10240,
+    fine_chunk=40960,
 ):
     """
     Process a list of query points to avoid memory issues.

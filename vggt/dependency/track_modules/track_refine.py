@@ -32,7 +32,7 @@ def refine_track(
     pradius=15,
     sradius=2,
     fine_iters=6,
-    chunk=10240,
+    chunk=40960,
 ):
     """
     Refines the tracking of images using a fine track predictor and a fine feature network.
