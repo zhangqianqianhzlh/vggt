@@ -108,8 +108,6 @@ def demo_fn(args):
     # TODO: return extrinsic, intrinsic, depth_map, depth_conf as cpu tensors or numpy arrays
     extrinsic, intrinsic, depth_map, depth_conf = run_VGGT(model, images, dtype)
 
-
-
     # Predicting Tracks
     # Using VGGSfM tracker instead of VGGT tracker for efficiency
     # VGGT tracker requires multiple backbone runs to query different frames ((this is a problem caused by the training process))
@@ -124,12 +122,15 @@ def demo_fn(args):
                                                                       keypoint_extractor="aliked+sp", 
                                                                       max_points_num=163840, fine_tracking=True)
             torch.cuda.empty_cache()
-            
-            
-            
+        
+
+
+
             import pdb; pdb.set_trace()
 
-            
+
+
+
             # Step 2: Filter out tracks based on visibility scores and depth confidence
             # Step 3: 
     
