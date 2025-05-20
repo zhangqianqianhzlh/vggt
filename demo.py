@@ -117,7 +117,8 @@ def demo_fn(args):
     
     if args.use_ba:
         with torch.cuda.amp.autocast(dtype=dtype):
-            pred_tracks, pred_vis_scores, pred_confs = predict_tracks(images, conf=depth_conf[0][:, None], 
+            conf_to_query = F.interpolate(depth_conf, size=images.shape[2:], mode="bilinear", align_corners=False)
+            pred_tracks, pred_vis_scores, pred_confs = predict_tracks(images, conf=conf_to_query.squeeze(0), 
                                                                       masks=None, max_query_pts=2048, 
                                                                       query_frame_num=5, 
                                                                       keypoint_extractor="aliked+sp", 

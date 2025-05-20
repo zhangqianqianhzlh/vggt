@@ -118,6 +118,10 @@ def _forward_on_query(query_index, images, conf, fmaps_for_tracker, keypoint_ext
     query_points = extract_keypoints(query_image, keypoint_extractors, round_keypoints=False)
     
     if conf is not None:
+        # query_points_long = query_points.squeeze(0).round().long()
+
+        # query_conf = conf[query_index]
+        
         import pdb; pdb.set_trace()
     
     
