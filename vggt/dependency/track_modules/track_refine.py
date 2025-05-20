@@ -20,6 +20,8 @@ from typing import Union, Tuple
 
 
 
+
+
 def refine_track(
     images,
     fine_fnet,
@@ -29,6 +31,7 @@ def refine_track(
     pradius=15,
     sradius=2,
     fine_iters=6,
+    chunk = 4096,
 ):
     """
     Refines the tracking of images using a fine track predictor and a fine feature network.
@@ -78,20 +81,19 @@ def refine_track(
     # Such operations are highly optimized at pytorch
     # (well if you really want to use interpolation, check the function extract_glimpse() below)
 
-    if False:
-        with torch.no_grad():
-            content_to_extract = images.reshape(B * S, 3, H, W)
-            C_in = content_to_extract.shape[1]
+    with torch.no_grad():
+        content_to_extract = images.reshape(B * S, 3, H, W)
+        C_in = content_to_extract.shape[1]
 
-            # Please refer to https://pytorch.org/docs/stable/generated/torch.nn.Unfold.html
-            # for the detailed explanation of unfold()
-            # Here it runs sliding windows (psize x psize) to build patches
-            # The shape changes from
-            # (B*S)x C_in x H x W to (B*S)x C_in x H_new x W_new x Psize x Psize
-            # where Psize is the size of patch
-            content_to_extract = content_to_extract.unfold(2, psize, 1).unfold(
-                3, psize, 1
-            )
+        # Please refer to https://pytorch.org/docs/stable/generated/torch.nn.Unfold.html
+        # for the detailed explanation of unfold()
+        # Here it runs sliding windows (psize x psize) to build patches
+        # The shape changes from
+        # (B*S)x C_in x H x W to (B*S)x C_in x H_new x W_new x Psize x Psize
+        # where Psize is the size of patch
+        content_to_extract = content_to_extract.unfold(2, psize, 1).unfold(
+            3, psize, 1
+        )
 
     # Floor the coarse predictions to get integers and save the fractional/decimal
     track_int = coarse_pred.floor().int()
@@ -115,25 +117,17 @@ def refine_track(
     batch_indices = (
         torch.arange(B * S)[:, None].expand(-1, N).to(content_to_extract.device)
     )
-    
-    if False:
-        # Extract image patches based on top left corners
-        # extracted_patches: (B*S) x N x C_in x Psize x Psize
-        extracted_patches = content_to_extract[
-            batch_indices, :, topleft[..., 1], topleft[..., 0]
-        ]
 
-    # # Feed patches to fine fent for features
-    # patch_feat = fine_fnet(
-    #     extracted_patches.reshape(B * S * N, C_in, psize, psize)
-    # )
+    # Extract image patches based on top left corners
+    # extracted_patches: (B*S) x N x C_in x Psize x Psize
+    extracted_patches = content_to_extract[
+        batch_indices, :, topleft[..., 1], topleft[..., 0]
+    ]
 
-    fmap  = fine_fnet(images.reshape(B*S, 3, H, W))
-    fmap_unfold = fmap.unfold(2, psize, 1).unfold(3, psize, 1)
-    
-    patch_feat = fmap_unfold[batch_indices, :, topleft[...,1], topleft[...,0]]
-    import pdb; pdb.set_trace()
-    patch_feat = patch_feat.reshape(B*S*N, C_out, psize, psize)
+    # Feed patches to fine fent for features
+    patch_feat = fine_fnet(
+        extracted_patches.reshape(B * S * N, C_in, psize, psize)
+    )
 
     C_out = patch_feat.shape[1]
 
@@ -191,7 +185,6 @@ def refine_track(
         )
 
     return refined_tracks, score
-
 
 
 
@@ -297,11 +290,20 @@ def refine_track_v0(
         batch_indices, :, topleft[..., 1], topleft[..., 0]
     ]
 
+
+    patches = extracted_patches.reshape(B*S*N, C_in, psize, psize)
+
+    patch_feat_list = []
+    for p in torch.split(patches, chunk):
+        patch_feat_list += [fine_fnet(p).to(patches.dtype)]
+    patch_feat = torch.cat(patch_feat_list, 0)
+
+    import pdb;pdb.set_trace()
     # Feed patches to fine fent for features
-    patch_feat = fine_fnet(
-        extracted_patches.reshape(B * S * N, C_in, psize, psize)
-    )
-    import pdb; pdb.set_trace()
+    # patch_feat = fine_fnet(
+    #     extracted_patches.reshape(B * S * N, C_in, psize, psize)
+    # )
+
     C_out = patch_feat.shape[1]
 
     # Refine the coarse tracks by fine_tracker
