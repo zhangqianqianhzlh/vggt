@@ -89,7 +89,7 @@ def predict_tracks(images, conf=None, masks=None, max_query_pts=2048, query_fram
     
     pred_tracks = np.concatenate(pred_tracks, axis=1)
     pred_vis_scores = np.concatenate(pred_vis_scores, axis=1)
-    pred_confs = np.concatenate(pred_confs, axis=1) if pred_confs else None
+    pred_confs = np.concatenate(pred_confs, axis=0) if pred_confs else None
     
     # from vggt.utils.visual_track import visualize_tracks_on_images
     # visualize_tracks_on_images(images[None], torch.from_numpy(pred_tracks[None]), torch.from_numpy(pred_vis_scores[None])>0.2, out_dir="track_visuals")
