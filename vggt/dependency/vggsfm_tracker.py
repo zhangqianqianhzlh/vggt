@@ -28,21 +28,21 @@ class TrackerPredictor(nn.Module):
         super(TrackerPredictor, self).__init__()
         """
         Initializes the tracker predictor.
-        
+
         Both coarse_predictor and fine_predictor are constructed as a BaseTrackerPredictor,
         check track_modules/base_track_predictor.py
-        
+
         Both coarse_fnet and fine_fnet are constructed as a 2D CNN network
-        check track_modules/blocks.py for BasicEncoder and ShallowEncoder 
+        check track_modules/blocks.py for BasicEncoder and ShallowEncoder
         """
         # Define coarse predictor configuration
         coarse_stride = 4
         self.coarse_down_ratio = 2
-        
+
         # Create networks directly instead of using instantiate
         self.coarse_fnet = BasicEncoder(stride=coarse_stride)
         self.coarse_predictor = BaseTrackerPredictor(stride=coarse_stride)
-        
+
         # Create fine predictor with stride = 1
         self.fine_fnet = ShallowEncoder(stride=1)
         self.fine_predictor = BaseTrackerPredictor(
@@ -108,19 +108,7 @@ class TrackerPredictor(nn.Module):
                 coarse_pred_track,
                 compute_score=False,
             )
-            
-            
-            from .track_modules.track_refine import refine_track_v0
-            fine_pred_track_v0, pred_score_v0 = refine_track_v0(
-                images,
-                self.fine_fnet,
-                self.fine_predictor,
-                coarse_pred_track,
-                compute_score=False,
-            )
 
-
-            import pdb; pdb.set_trace()
             if inference:
                 torch.cuda.empty_cache()
         else:
@@ -151,5 +139,5 @@ class TrackerPredictor(nn.Module):
             )
         else:
             fmaps = self.coarse_fnet(images)
-        
+
         return fmaps
