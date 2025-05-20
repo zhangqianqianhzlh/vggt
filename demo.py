@@ -118,13 +118,15 @@ def demo_fn(args):
     if args.use_ba:
         with torch.cuda.amp.autocast(dtype=dtype):
             pred_tracks, pred_vis_scores = predict_tracks(images, masks=None, max_query_pts=2048, query_frame_num=5, keypoint_extractor="aliked+sp", max_points_num=163840, fine_tracking=True)
+
             torch.cuda.empty_cache()
+            import pdb; pdb.set_trace()
+
             
             # Step 2: Filter out tracks based on visibility scores and depth confidence
             # Step 3: 
     
     # from vggt.dependency.track_predict import predict_track, build_vggsfm_tracker
-    import pdb; pdb.set_trace()
     # from vggt.dependency.vggsfm_tracker import TrackerPredictor
     # tracker = TrackerPredictor()
     # 

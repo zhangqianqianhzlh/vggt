@@ -78,7 +78,7 @@ def predict_tracks(images, masks=None, max_query_pts=2048, query_frame_num=5,
             max_points_num,
             fine_tracking,
             min_vis=500,            
-            non_vis_thresh=0.05,
+            non_vis_thresh=0.1,
             device=device
         )
     
@@ -163,7 +163,7 @@ def _augment_non_visible_frames(
         fine_tracking:     bool,
         *,
         min_vis:        int   = 500,
-        non_vis_thresh: float = 0.05,
+        non_vis_thresh: float = 0.1,
         device:         torch.device = None,
 ):
     """
@@ -173,27 +173,24 @@ def _augment_non_visible_frames(
     cur_extractors = keypoint_extractors   # may be replaced on the final trial
 
     while True:
-        import pdb; pdb.set_trace()
         # --- visibility per frame -----------------------------------------
-        vis_tensor = torch.from_numpy(
-            np.concatenate(pred_vis_scores, axis=1)     # [S, N_total]
-        ).to(device)
-
-        non_vis_frames = torch.nonzero(
-            (vis_tensor > non_vis_thresh).sum(-1) < min_vis
-        ).squeeze(-1).tolist()
+        vis_array = np.concatenate(pred_vis_scores, axis=1)
+        
+        # Count frames with sufficient visibility using numpy
+        sufficient_vis_count = (vis_array > non_vis_thresh).sum(axis=-1)
+        non_vis_frames = np.where(sufficient_vis_count < min_vis)[0].tolist()
 
         if len(non_vis_frames) == 0:
-            break                                      # every frame is OK
+            break                                  
 
         print("Processing non visible frames:", non_vis_frames)
 
         # --- decide the frames & extractor for this round -----------------
         if non_vis_frames[0] == last_query:
-            # same frame failed twice  ➜  final “all-in” attempt
+            # same frame failed twice  ➜  final "all-in" attempt
             final_trial      = True
             cur_extractors   = initialize_feature_extractors(
-                1024,                               # half of 2048 by default
+                2048,                               
                 extractor_method="sp+sift+aliked",
                 device=device,
             )
