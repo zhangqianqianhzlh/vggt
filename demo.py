@@ -127,7 +127,7 @@ def demo_fn(args):
 
             # You can also change the pred_tracks to any tracks from other trackers
             # e.g., from COLMAP, from CoTracker, or by chaining 2D matches from Lightglue/LoFTR.
-            pred_tracks, pred_vis_scores, pred_confs = predict_tracks(images, conf=depth_conf, 
+            pred_tracks, pred_vis_scores, pred_confs, pred_points = predict_tracks(images, conf=depth_conf, 
                                                                       points_3d=points_3d,
                                                                       masks=None, max_query_pts=2048, 
                                                                       query_frame_num=5, 
