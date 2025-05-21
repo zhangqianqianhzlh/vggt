@@ -57,10 +57,10 @@ def run_VGGT(model, images, dtype, resolution=518):
         # Predict Depth Maps
         depth_map, depth_conf = model.depth_head(aggregated_tokens_list, images, ps_idx)
 
-    extrinsic = extrinsic.squeeze(0)
-    intrinsic = intrinsic.squeeze(0)
-    depth_map = depth_map.squeeze(0)
-    depth_conf = depth_conf.squeeze(0)
+    extrinsic = extrinsic.squeeze(0).cpu().numpy()
+    intrinsic = intrinsic.squeeze(0).cpu().numpy()
+    depth_map = depth_map.squeeze(0).cpu().numpy()
+    depth_conf = depth_conf.squeeze(0).cpu().numpy()
     return extrinsic, intrinsic, depth_map, depth_conf
 
 
@@ -112,11 +112,10 @@ def demo_fn(args):
     print(f"Loaded {len(images)} images from {image_dir}")
     
 
-
     # Run VGGT to estimate camera and depth
     # Run with 518x518 images
-    # TODO: return extrinsic, intrinsic, depth_map, depth_conf as cpu tensors or numpy arrays
     extrinsic, intrinsic, depth_map, depth_conf = run_VGGT(model, images, dtype, vggt_fixed_resolution)
+    points_3d = unproject_depth_map_to_point_map(depth_map, extrinsic, intrinsic)
 
     
     if args.use_ba:
@@ -125,16 +124,19 @@ def demo_fn(args):
             # Using VGGSfM tracker instead of VGGT tracker for efficiency
             # VGGT tracker requires multiple backbone runs to query different frames ((this is a problem caused by the training process))
             # Will be fixed in VGGT v2
-            conf_to_query = F.interpolate(depth_conf[None], size=images.shape[2:], mode="bilinear", align_corners=False)[0]
-            
+
+            import pdb; pdb.set_trace()
             # You can also change the pred_tracks to any tracks from other trackers
             # e.g., from COLMAP, from CoTracker, or by chaining 2D matches from Lightglue/LoFTR.
-            pred_tracks, pred_vis_scores, pred_confs = predict_tracks(images, conf=conf_to_query, 
+            pred_tracks, pred_vis_scores, pred_confs = predict_tracks(images, conf=depth_conf, 
+                                                                      points_3d=points_3d,
                                                                       masks=None, max_query_pts=2048, 
                                                                       query_frame_num=5, 
                                                                       keypoint_extractor="aliked+sp", 
                                                                       max_points_num=163840, fine_tracking=True)
             torch.cuda.empty_cache()
+            
+            # Get the init 3D points
             
             # TODO: filter out the tracks from the padding region
             
