@@ -292,22 +292,70 @@ def _iterative_undistortion_torch(
 # -----------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    # Quick correctness check: compare NumPy vs. torch on random data.
-    max_err = 0.0
-    for _ in range(100):
-        B = random.randint(1, 8)
-        T = random.randint(10, 50)
-        params_np = np.random.rand(B, 1).astype(np.float32)
-        tracks_np = np.random.rand(B, T, 2).astype(np.float32)
+    import random
+    import pycolmap
+    import time
 
-        params_torch = torch.from_numpy(params_np)
-        tracks_torch = torch.from_numpy(tracks_np)
+    # Test against pycolmap reference implementation
+    print("Testing against pycolmap reference...")
+    max_diff = 0
+    for i in range(1000):
+        # Define distortion parameters (assuming 1 parameter for simplicity)
+        B = random.randint(1, 500)
+        track_num = random.randint(100, 1000)
+        
+        # Generate random parameters and tracks
+        params_torch = torch.rand((B, 1), dtype=torch.float32)
+        tracks_normalized_torch = torch.rand((B, track_num, 2), dtype=torch.float32)
+        
+        # Convert to numpy for numpy backend testing
+        params_np = params_torch.numpy()
+        tracks_normalized_np = tracks_normalized_torch.numpy()
+        
+        # Undistort the tracks using both backends
+        undistorted_tracks_torch = iterative_undistortion(params_torch, tracks_normalized_torch)
+        undistorted_tracks_np = iterative_undistortion(params_np, tracks_normalized_np)
+        
+        # Compare with pycolmap
+        for b in range(B):
+            pycolmap_intri = np.array([1, 0, 0, params_torch[b].item()])
+            pycam = pycolmap.Camera(
+                model="SIMPLE_RADIAL",
+                width=1,
+                height=1,
+                params=pycolmap_intri,
+                camera_id=0,
+            )
 
-        undist_np = iterative_undistortion(params_np, tracks_np)
-        undist_torch = iterative_undistortion(params_torch, tracks_torch).numpy()
+            undistorted_tracks_pycolmap = pycam.cam_from_img(
+                tracks_normalized_torch[b].numpy()
+            )
+            
+            # Compare torch vs pycolmap
+            torch_diff = np.median(np.abs(undistorted_tracks_torch[b].numpy() - undistorted_tracks_pycolmap))
+            # Compare numpy vs pycolmap
+            np_diff = np.median(np.abs(undistorted_tracks_np[b] - undistorted_tracks_pycolmap))
+            # Compare torch vs numpy
+            impl_diff = np.median(np.abs(undistorted_tracks_torch[b].numpy() - undistorted_tracks_np[b]))
+            
+            max_diff = max(max_diff, torch_diff, np_diff, impl_diff)
+            
+        if i % 10 == 0:
+            print(f"Iteration {i}, max_diff: {max_diff}")
 
-        err = np.max(np.abs(undist_np - undist_torch))
-        max_err = max(max_err, err)
+    print(f"Maximum difference across all implementations: {max_diff}")
+    
+    # Benchmark performance
+    print("\nPerformance benchmark:")
+    for backend, params, tracks in [
+        ("NumPy", params_np, tracks_normalized_np),
+        ("PyTorch", params_torch, tracks_normalized_torch)
+    ]:
+        start_time = time.time()
+        iterative_undistortion(params, tracks)
+        elapsed = time.time() - start_time
+        print(f"{backend} backend: {elapsed:.4f} seconds")
+        
+    print("Test finished ✓")
 
-    print("Δ(max) NumPy vs. torch:", max_err)
-    print("Test finished ✔️")
+
