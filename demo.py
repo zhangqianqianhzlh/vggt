@@ -127,23 +127,24 @@ def demo_fn(args):
 
             # You can also change the pred_tracks to any tracks from other trackers
             # e.g., from COLMAP, from CoTracker, or by chaining 2D matches from Lightglue/LoFTR.
-            pred_tracks, pred_vis_scores, pred_confs, pred_points = predict_tracks(images, conf=depth_conf, 
+            pred_tracks, pred_vis_scores, pred_confs, pred_points_3d = predict_tracks(images, conf=depth_conf, 
                                                                       points_3d=points_3d,
                                                                       masks=None, max_query_pts=2048, 
                                                                       query_frame_num=5, 
                                                                       keypoint_extractor="aliked+sp", 
                                                                       max_points_num=163840, fine_tracking=True)
             torch.cuda.empty_cache()
-            
-            # Get the init 3D points
-            
-            # TODO: filter out the tracks from the padding region
-            
+        
             # rescale the intrinsic matrix from 518 to 1024
-            # intrinsic = intrinsic.squeeze(0)
-            # extrinsic = extrinsic.squeeze(0)
-
-
+            intrinsic[:, :2, :] *= scale
+            
+            # Now we have the tracks, visibility scores, confidences, and 3D points
+            
+            
+            
+            
+            
+            
             import pdb; pdb.set_trace()
 
 
