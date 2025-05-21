@@ -28,6 +28,10 @@ def batch_np_matrix_to_pycolmap(
 
     Check https://github.com/colmap/pycolmap for more details about its format
     
+    NOTE that colmap expects images/cameras/points3D to be 1-indexed
+    so there is a +1 offset between colmap index and batch index
+    
+    
     NOTE: different from VGGSfM, this function:
     1. Use np instead of torch
     2. Frame index and camera id starts from 1 rather than 0 (to fit the format of PyCOLMAP)
@@ -186,7 +190,7 @@ def batch_np_matrix_to_pycolmap(
     return reconstruction, valid_mask
 
 
-def pycolmap_to_batch_matrix(
+def pycolmap_to_batch_np_matrix(
     reconstruction, device="cpu", camera_type="SIMPLE_PINHOLE"
 ):
     """

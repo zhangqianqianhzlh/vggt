@@ -120,7 +120,7 @@ def demo_fn(args):
     
     if args.use_ba:
         from vggt.dependency.track_predict import predict_tracks
-        from vggt.dependency.np_to_pycolmap import batch_matrix_to_pycolmap
+        from vggt.dependency.np_to_pycolmap import batch_np_matrix_to_pycolmap
 
         with torch.cuda.amp.autocast(dtype=dtype):
             # Predicting Tracks
@@ -150,7 +150,7 @@ def demo_fn(args):
             
             # TODO: add support for radial distortion, which needs extra_params
             
-            reconstruction, valid_track_mask = batch_matrix_to_pycolmap(
+            reconstruction, valid_track_mask = batch_np_matrix_to_pycolmap(
                 pred_points_3d,
                 extrinsic,
                 intrinsic,
