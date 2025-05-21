@@ -36,14 +36,14 @@ def parse_args():
     return parser.parse_args()
 
 
-def run_VGGT(model, images, dtype):
+def run_VGGT(model, images, dtype, resolution=518):
     # images: [B, 3, H, W]
     
     assert len(images.shape) == 4
     assert images.shape[1] == 3
     
     # hard-coded to use 518
-    images = F.interpolate(images, size=(518, 518), mode="bicubic", align_corners=False)
+    images = F.interpolate(images, size=(resolution, resolution), mode="bicubic", align_corners=False)
     
     with torch.no_grad():
         with torch.cuda.amp.autocast(dtype=dtype):
@@ -57,6 +57,10 @@ def run_VGGT(model, images, dtype):
         # Predict Depth Maps
         depth_map, depth_conf = model.depth_head(aggregated_tokens_list, images, ps_idx)
 
+    extrinsic = extrinsic.squeeze(0)
+    intrinsic = intrinsic.squeeze(0)
+    depth_map = depth_map.squeeze(0)
+    depth_conf = depth_conf.squeeze(0)
     return extrinsic, intrinsic, depth_map, depth_conf
 
 
@@ -94,36 +98,49 @@ def demo_fn(args):
     if len(image_path_list) == 0:
         raise ValueError(f"No images found in {image_dir}")
     
+    
     # Load images and original coordinates
-    # Default to square images with 1024x1024 resolution
-    # TODO: also support masks here
-    images, original_coords = load_and_preprocess_images_square(image_path_list)
+    # Load Image in 1024, while running VGGT with 518
+    # TODO: also support masks here    
+    vggt_fixed_resolution = 518
+    img_load_resolution = 1024
+    scale = img_load_resolution /vggt_fixed_resolution
+
+    images, original_coords = load_and_preprocess_images_square(image_path_list, img_load_resolution)
     images = images.to(device)
     original_coords = original_coords.to(device)
     print(f"Loaded {len(images)} images from {image_dir}")
     
 
+
     # Run VGGT to estimate camera and depth
     # Run with 518x518 images
     # TODO: return extrinsic, intrinsic, depth_map, depth_conf as cpu tensors or numpy arrays
-    extrinsic, intrinsic, depth_map, depth_conf = run_VGGT(model, images, dtype)
+    extrinsic, intrinsic, depth_map, depth_conf = run_VGGT(model, images, dtype, vggt_fixed_resolution)
 
-    # Predicting Tracks
-    # Using VGGSfM tracker instead of VGGT tracker for efficiency
-    # VGGT tracker requires multiple backbone runs to query different frames ((this is a problem caused by the training process))
-    # Will be fixed in VGGT v2
     
     if args.use_ba:
         with torch.cuda.amp.autocast(dtype=dtype):
-            conf_to_query = F.interpolate(depth_conf, size=images.shape[2:], mode="bilinear", align_corners=False)
-            pred_tracks, pred_vis_scores, pred_confs = predict_tracks(images, conf=conf_to_query.squeeze(0), 
+            # Predicting Tracks
+            # Using VGGSfM tracker instead of VGGT tracker for efficiency
+            # VGGT tracker requires multiple backbone runs to query different frames ((this is a problem caused by the training process))
+            # Will be fixed in VGGT v2
+            conf_to_query = F.interpolate(depth_conf[None], size=images.shape[2:], mode="bilinear", align_corners=False)[0]
+            
+            # You can also change the pred_tracks to any tracks from other trackers
+            # e.g., from COLMAP, from CoTracker, or by chaining 2D matches from Lightglue/LoFTR.
+            pred_tracks, pred_vis_scores, pred_confs = predict_tracks(images, conf=conf_to_query, 
                                                                       masks=None, max_query_pts=2048, 
                                                                       query_frame_num=5, 
                                                                       keypoint_extractor="aliked+sp", 
                                                                       max_points_num=163840, fine_tracking=True)
             torch.cuda.empty_cache()
-        
-
+            
+            # TODO: filter out the tracks from the padding region
+            
+            # rescale the intrinsic matrix from 518 to 1024
+            # intrinsic = intrinsic.squeeze(0)
+            # extrinsic = extrinsic.squeeze(0)
 
 
             import pdb; pdb.set_trace()

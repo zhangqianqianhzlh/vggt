@@ -11,7 +11,6 @@ from vggt.dependency.vggsfm_utils import *
 def predict_tracks(images, conf=None, masks=None, max_query_pts=2048, query_frame_num=5,
                    keypoint_extractor="aliked+sp", 
                    max_points_num=163840, fine_tracking=True, complete_non_vis=True):
-
     """
     Predict tracks for the given images and masks.
 
@@ -59,7 +58,7 @@ def predict_tracks(images, conf=None, masks=None, max_query_pts=2048, query_fram
 
     if fine_tracking:
         print("For faster inference, consider disabling fine_tracking") 
-        
+
     for query_index in query_frame_indexes:
         print(f"Predicting tracks for query frame {query_index}")
         pred_track, pred_vis, pred_conf = _forward_on_query(
@@ -257,3 +256,4 @@ def _augment_non_visible_frames(
             break                                   # stop after blast round
 
     return pred_tracks, pred_vis_scores, pred_confs
+
