@@ -6,6 +6,16 @@ from lightglue import ALIKED, SuperPoint, SIFT
 from vggt.dependency.vggsfm_tracker import TrackerPredictor
 
 
+import logging
+import warnings
+
+# Suppress DINO v2 logs
+logging.getLogger("dinov2").setLevel(logging.WARNING)
+warnings.filterwarnings("ignore", message="xFormers is available")
+warnings.filterwarnings("ignore", message="dinov2")
+
+
+
 _RESNET_MEAN = [0.485, 0.456, 0.406]
 _RESNET_STD = [0.229, 0.224, 0.225]
 

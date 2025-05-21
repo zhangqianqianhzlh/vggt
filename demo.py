@@ -122,7 +122,7 @@ def demo_fn(args):
         with torch.cuda.amp.autocast(dtype=dtype):
             # Predicting Tracks
             # Using VGGSfM tracker instead of VGGT tracker for efficiency
-            # VGGT tracker requires multiple backbone runs to query different frames ((this is a problem caused by the training process))
+            # VGGT tracker requires multiple backbone runs to query different frames (this is a problem caused by the training process)
             # Will be fixed in VGGT v2
 
             # You can also change the pred_tracks to any tracks from other trackers
