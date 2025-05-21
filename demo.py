@@ -173,15 +173,11 @@ def demo_fn(args):
         conf_thres_value = 5 # hard-coded to 5
         max_points_for_colmap = 100000
         # 
-        
         from vggt.dependency.np_to_pycolmap import batch_np_matrix_to_pycolmap_wo_track
 
         image_size = np.array([vggt_fixed_resolution, vggt_fixed_resolution])        
         num_frames, height, width, _ = points_3d.shape
-        
-
         # get the points, 2D positions, frame index, and rgb colors
-        
         # points_3d SxHxWx3, numpy array
         points_rgb =  F.interpolate(images, size=(vggt_fixed_resolution, vggt_fixed_resolution), mode="bilinear", align_corners=False)
         points_rgb = (points_rgb.cpu().numpy() * 255).astype(np.uint8)
@@ -189,14 +185,19 @@ def demo_fn(args):
         
         # (S, H, W, 3), with x, y coordinates and frame indices
         points_xyf = create_pixel_coordinate_grid(num_frames, height, width)
-
+        
         conf_mask = (depth_conf >= conf_thres_value)
+        conf_mask = randomly_limit_trues(conf_mask, max_points_for_colmap)
 
+        points_3d = points_3d[conf_mask]
+        points_xyf = points_xyf[conf_mask]
+        points_rgb = points_rgb[conf_mask]
 
-        import pdb; pdb.set_trace()
 
         batch_np_matrix_to_pycolmap_wo_track(
             points_3d,
+            points_xyf,
+            points_rgb,
             extrinsic,
             intrinsic,
             image_size,

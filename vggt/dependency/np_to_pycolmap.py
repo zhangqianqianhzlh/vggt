@@ -254,6 +254,8 @@ def pycolmap_to_batch_np_matrix(
 
 def batch_np_matrix_to_pycolmap_wo_track(
     points3d,
+    points_xyf,
+    points_rgb,
     extrinsics,
     intrinsics,
     image_size,
@@ -262,16 +264,11 @@ def batch_np_matrix_to_pycolmap_wo_track(
 ):
     """
     Convert Batched NumPy Arrays to PyCOLMAP
-
-    Check https://github.com/colmap/pycolmap for more details about its format
     
-    NOTE that colmap expects images/cameras/points3D to be 1-indexed
-    so there is a +1 offset between colmap index and batch index
+    Different from batch_np_matrix_to_pycolmap, this function does not use tracks.
     
-    
-    NOTE: different from VGGSfM, this function:
-    1. Use np instead of torch
-    2. Frame index and camera id starts from 1 rather than 0 (to fit the format of PyCOLMAP)
+    It saves points3d to colmap reconstruction format only to serve as init for Gaussians or other nvs methods.
+    Do not use this for BA.
     """
 
     import pdb; pdb.set_trace()
