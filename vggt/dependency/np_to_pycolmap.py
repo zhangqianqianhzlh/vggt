@@ -43,7 +43,13 @@ def batch_matrix_to_pycolmap(
     assert image_size.shape[0] == 2
 
     if max_reproj_error is not None:
+        from .projection import project_3D_points, project_3D_points_np
+
+        # projected_points_2d_np, projected_points_cam_np = project_3D_points_np(points3d.cpu().numpy(), extrinsics.cpu().numpy(), intrinsics.cpu().numpy(), return_points_cam=True)
         projected_points_2d, projected_points_cam = project_3D_points(points3d, extrinsics, intrinsics, return_points_cam=True)
+        
+        
+        
         projected_diff = (projected_points_2d - tracks).norm(dim=-1)
         projected_points_2d[projected_points_cam[:, -1] <= 0] = 1e6
         reproj_mask = projected_diff < max_reproj_error

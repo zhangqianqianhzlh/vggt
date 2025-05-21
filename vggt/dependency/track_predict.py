@@ -5,7 +5,7 @@
 # LICENSE file in the root directory of this source tree.
 
 import torch
-from vggt.dependency.vggsfm_utils import *
+from .vggsfm_utils import *
 
 
 def predict_tracks(

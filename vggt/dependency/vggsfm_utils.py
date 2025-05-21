@@ -3,7 +3,7 @@ import torch.nn.functional as F
 import numpy as np
 import pycolmap
 from lightglue import ALIKED, SuperPoint, SIFT
-from vggt.dependency.vggsfm_tracker import TrackerPredictor
+from .vggsfm_tracker import TrackerPredictor
 
 
 import logging

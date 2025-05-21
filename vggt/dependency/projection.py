@@ -1,6 +1,6 @@
 import torch
 import numpy as np
-from distortion import apply_distortion
+from .distortion import apply_distortion
 
 def img_from_cam_np(intrinsics: np.ndarray,
                     points_cam: np.ndarray,
