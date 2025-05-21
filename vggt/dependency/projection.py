@@ -191,39 +191,40 @@ def img_from_cam(intrinsics, points_cam, extra_params=None, default=0.0):
 
 
 
+
 if __name__ == "__main__":
     # Set up example input
-    B, N = 2, 1024
+    B, N = 24, 10240
 
-    points3D = np.random.rand(N, 3).astype(np.float64)
-    extrinsics = np.random.rand(B, 3, 4).astype(np.float64)
-    intrinsics = np.random.rand(B, 3, 3).astype(np.float64)
+    for _ in range(100):
+        points3D = np.random.rand(N, 3).astype(np.float64)
+        extrinsics = np.random.rand(B, 3, 4).astype(np.float64)
+        intrinsics = np.random.rand(B, 3, 3).astype(np.float64)
 
-    # Convert to torch tensors
-    points3D_torch = torch.tensor(points3D)
-    extrinsics_torch = torch.tensor(extrinsics)
-    intrinsics_torch = torch.tensor(intrinsics)
+        # Convert to torch tensors
+        points3D_torch = torch.tensor(points3D)
+        extrinsics_torch = torch.tensor(extrinsics)
+        intrinsics_torch = torch.tensor(intrinsics)
 
-    # Run NumPy implementation
-    points2D_np = project_3D_points_np(points3D, extrinsics, intrinsics)
+        # Run NumPy implementation
+        points2D_np = project_3D_points_np(points3D, extrinsics, intrinsics)
 
-    # Run torch implementation
-    points2D_torch = project_3D_points(points3D_torch, extrinsics_torch, intrinsics_torch)
+        # Run torch implementation
+        points2D_torch = project_3D_points(points3D_torch, extrinsics_torch, intrinsics_torch)
 
-    # Convert torch output to numpy
-    points2D_torch_np = points2D_torch.detach().numpy()
+        # Convert torch output to numpy
+        points2D_torch_np = points2D_torch.detach().numpy()
 
-    # Compute difference
-    diff = np.abs(points2D_np - points2D_torch_np)
-    print("Difference between NumPy and PyTorch implementations:")
-    print(diff)
+        # Compute difference
+        diff = np.abs(points2D_np - points2D_torch_np)
+        print("Difference between NumPy and PyTorch implementations:")
+        print(diff)
 
-    # Check max error
-    max_diff = np.max(diff)
-    print(f"Maximum difference: {max_diff}")
+        # Check max error
+        max_diff = np.max(diff)
+        print(f"Maximum difference: {max_diff}")
 
-    if np.allclose(points2D_np, points2D_torch_np, atol=1e-6):
-        print("Implementations match closely.")
-    else:
-        print("Significant differences detected.")
-
+        if np.allclose(points2D_np, points2D_torch_np, atol=1e-6):
+            print("Implementations match closely.")
+        else:
+            print("Significant differences detected.")
