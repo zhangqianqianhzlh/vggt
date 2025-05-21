@@ -31,6 +31,7 @@ def predict_tracks(images, conf=None, points_3d=None, masks=None, max_query_pts=
         pred_tracks: Numpy array containing the predicted tracks.
         pred_vis_scores: Numpy array containing the visibility scores for the tracks.
         pred_confs: Numpy array containing the confidence scores for the tracks.
+        pred_points: Numpy array containing the 3D points for the tracks.
     """
 
     device = images.device
@@ -73,11 +74,14 @@ def predict_tracks(images, conf=None, points_3d=None, masks=None, max_query_pts=
         pred_points.append(pred_point)
         
     if complete_non_vis:
-        pred_tracks, pred_vis_scores, pred_confs = _augment_non_visible_frames(
+        pred_tracks, pred_vis_scores, pred_confs, pred_points = _augment_non_visible_frames(
             pred_tracks,
             pred_vis_scores,
             pred_confs,
+            pred_points,
             images,
+            conf,
+            points_3d,
             fmaps_for_tracker,
             keypoint_extractors,
             tracker,
@@ -85,17 +89,18 @@ def predict_tracks(images, conf=None, points_3d=None, masks=None, max_query_pts=
             fine_tracking,
             min_vis=500,            
             non_vis_thresh=0.1,
-            device=device
+            device=device,
         )
     
     pred_tracks = np.concatenate(pred_tracks, axis=1)
     pred_vis_scores = np.concatenate(pred_vis_scores, axis=1)
     pred_confs = np.concatenate(pred_confs, axis=0) if pred_confs else None
+    pred_points = np.concatenate(pred_points, axis=0) if pred_points else None
     
     # from vggt.utils.visual_track import visualize_tracks_on_images
     # visualize_tracks_on_images(images[None], torch.from_numpy(pred_tracks[None]), torch.from_numpy(pred_vis_scores[None])>0.2, out_dir="track_visuals")
 
-    return pred_tracks, pred_vis_scores, pred_confs
+    return pred_tracks, pred_vis_scores, pred_confs, pred_points
 
 
 def _forward_on_query(query_index, images, conf, points_3d, fmaps_for_tracker, keypoint_extractors, 
@@ -125,21 +130,29 @@ def _forward_on_query(query_index, images, conf, points_3d, fmaps_for_tracker, k
     query_points = extract_keypoints(query_image, keypoint_extractors, round_keypoints=False)
     query_points = query_points[:, torch.randperm(query_points.shape[1], device=device)]
     
-    import pdb; pdb.set_trace()
-    if conf is not None:
-        query_points_long = query_points.squeeze(0).round().long()
-        pred_conf = conf[query_index][query_points_long[:, 1], query_points_long[:, 0]]
-        valid_conf_mask = pred_conf > 1.05   # hardcoded threshold
-        if valid_conf_mask.sum() > 512:
-            query_points = query_points[:, valid_conf_mask]
-            pred_conf = pred_conf[valid_conf_mask]
+    # Query the confidence and points_3d at the keypoint locations
+    if (conf is not None) and (points_3d is not None):
+        assert height == width
+        assert conf.shape[-2] == conf.shape[-1]
+        assert conf.shape[:3] == points_3d.shape[:3]
+        scale = conf.shape[-1] / width
+
+        query_points_scaled = (query_points.squeeze(0) * scale).round().long()
+        query_points_np = query_points_scaled.cpu().numpy()
+
+        pred_conf = conf[query_index][query_points_np[:, 1], query_points_np[:, 0]]
+        pred_point = points_3d[query_index][query_points_np[:, 1], query_points_np[:, 0]]
+
+        # heuristic to remove low confidence points
+        # should I export this as an input parameter?
+        valid_mask = pred_conf > 1.05
+        if valid_mask.sum() > 512:
+            query_points = query_points[:, valid_mask]  # Make sure shape is compatible
+            pred_conf = pred_conf[valid_mask]
+            pred_point = pred_point[valid_mask]
     else:
         pred_conf = None
-
-    if points_3d is not None:
-        query_points_3d = points_3d[query_index][query_points_long[:, 1], query_points_long[:, 0]]
-    else:
-        query_points_3d = None
+        pred_point = None
 
     reorder_index = calculate_index_mappings(query_index, frame_num, device=device)
     reorder_images = switch_tensor_order([images], reorder_index, dim=0)[0]
@@ -171,8 +184,8 @@ def _forward_on_query(query_index, images, conf, points_3d, fmaps_for_tracker, k
     
     pred_track = pred_track.squeeze(0).float().cpu().numpy()
     pred_vis = pred_vis.squeeze(0).float().cpu().numpy()
-    pred_conf = pred_conf.float().cpu().numpy()
-    return pred_track, pred_vis, pred_conf
+
+    return pred_track, pred_vis, pred_conf, pred_point
 
 
 
@@ -181,8 +194,11 @@ def _augment_non_visible_frames(
         pred_tracks:       list,          # ← running list of np.ndarrays
         pred_vis_scores:   list,          # ← running list of np.ndarrays
         pred_confs:        list,          # ← running list of np.ndarrays for confidence scores
+        pred_points:       list,          # ← running list of np.ndarrays for 3D points
         images:            torch.Tensor,
-        fmaps_for_tracker: torch.Tensor,
+        conf, 
+        points_3d,
+        fmaps_for_tracker,
         keypoint_extractors,
         tracker,
         max_points_num:    int,
@@ -199,6 +215,7 @@ def _augment_non_visible_frames(
         pred_tracks: List of numpy arrays containing predicted tracks.
         pred_vis_scores: List of numpy arrays containing visibility scores.
         pred_confs: List of numpy arrays containing confidence scores.
+        pred_points: List of numpy arrays containing 3D points.
         images: Tensor of shape [S, 3, H, W] containing the input images.
         fmaps_for_tracker: Feature maps for the tracker
         keypoint_extractors: Initialized feature extractors
@@ -208,9 +225,11 @@ def _augment_non_visible_frames(
         min_vis: Minimum visibility threshold
         non_vis_thresh: Non-visibility threshold
         device: Device to use for computation
+        conf: Tensor of shape [S, 1, H, W] containing confidence scores
+        points_3d: Tensor containing 3D points
     
     Returns:
-        Updated pred_tracks, pred_vis_scores, and pred_confs lists.
+        Updated pred_tracks, pred_vis_scores, pred_confs, and pred_points lists.
     """
     last_query   = -1
     final_trial  = False
@@ -246,9 +265,11 @@ def _augment_non_visible_frames(
 
         # --- run the tracker for every selected frame ---------------------
         for query_index in query_frame_list:
-            new_track, new_vis, new_conf = _forward_on_query(
+            new_track, new_vis, new_conf, new_point = _forward_on_query(
                 query_index,
                 images,
+                conf,
+                points_3d,
                 fmaps_for_tracker,
                 cur_extractors,
                 tracker,
@@ -259,9 +280,10 @@ def _augment_non_visible_frames(
             pred_tracks.append(new_track)
             pred_vis_scores.append(new_vis)
             pred_confs.append(new_conf)
+            pred_points.append(new_point)
 
         if final_trial:
             break                                   # stop after blast round
 
-    return pred_tracks, pred_vis_scores, pred_confs
+    return pred_tracks, pred_vis_scores, pred_confs, pred_points
 
