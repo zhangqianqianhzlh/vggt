@@ -35,7 +35,7 @@ def batch_matrix_to_pycolmap(
     # image_size: 2, assume all the frames have been padded to the same size
     # where N is the number of frames and P is the number of tracks
 
-    import pdb;pdb.set_trace()
+    
     N, P, _ = tracks.shape
     assert len(extrinsics) == N
     assert len(intrinsics) == N
