@@ -35,7 +35,10 @@ def batch_np_matrix_to_pycolmap(
     NOTE: different from VGGSfM, this function:
     1. Use np instead of torch
     2. Frame index and camera id starts from 1 rather than 0 (to fit the format of PyCOLMAP)
+    
+    TODO: handle rgb colors?
     """
+
 
     # points3d: Px3
     # extrinsics: Nx3x4
@@ -268,60 +271,30 @@ def batch_np_matrix_to_pycolmap_wo_track(
     Different from batch_np_matrix_to_pycolmap, this function does not use tracks.
     
     It saves points3d to colmap reconstruction format only to serve as init for Gaussians or other nvs methods.
-    Do not use this for BA.
+    
+    Do NOT use this for BA.
     """
-
-    import pdb; pdb.set_trace()
     # points3d: Px3
+    # points_xyf: Px3, with x, y coordinates and frame indices
+    # points_rgb: Px3, rgb colors
     # extrinsics: Nx3x4
     # intrinsics: Nx3x3
-    # tracks: NxPx2
-    # masks: NxP
     # image_size: 2, assume all the frames have been padded to the same size
     # where N is the number of frames and P is the number of tracks
-
-
-    N, P, _ = tracks.shape
-    assert len(extrinsics) == N
-    assert len(intrinsics) == N
-    assert len(points3d) == P
-    assert image_size.shape[0] == 2
-
-    if max_reproj_error is not None:
-        projected_points_2d, projected_points_cam = project_3D_points_np(points3d, 
-                                                        extrinsics, intrinsics)        
-        projected_diff = np.linalg.norm(projected_points_2d - tracks, axis=-1)
-        projected_points_2d[projected_points_cam[:, -1] <= 0] = 1e6
-        reproj_mask = projected_diff < max_reproj_error
-
-
-    if masks is not None and reproj_mask is not None:
-        masks = np.logical_and(masks, reproj_mask)
-    elif masks is not None:
-        masks = masks
-    else:
-        masks = reproj_mask
-
-    assert masks is not None
-
-    if masks.sum(1).min() < min_inlier_per_frame:
-        print(f"Not enough inliers per frame, skip BA.")
-        return None, None
     
+    N = len(extrinsics)
+    P = len(points3d)
+    
+
     # Reconstruction object, following the format of PyCOLMAP/COLMAP
     reconstruction = pycolmap.Reconstruction()
 
-    inlier_num = masks.sum(0)
-    valid_mask = inlier_num >= 2  # a track is invalid if without two inliers
-    valid_idx = np.nonzero(valid_mask)[0]
-
-    # Only add 3D points that have sufficient 2D points
-    for vidx in valid_idx:
+    for vidx in range(P):
         reconstruction.add_point3D(
-            points3d[vidx], pycolmap.Track(), np.zeros(3)
+            points3d[vidx], pycolmap.Track(), points_rgb[vidx]
         )
 
-    num_points3D = len(valid_idx)
+
     camera = None
     # frame idx
     for fidx in range(N):
@@ -391,6 +364,10 @@ def batch_np_matrix_to_pycolmap_wo_track(
         
         # NOTE point3D_id start by 1
         for point3D_id in range(1, num_points3D + 1):
+
+
+            import pdb; pdb.set_trace()
+
             original_track_idx = valid_idx[point3D_id - 1]
 
             if (
