@@ -8,7 +8,7 @@ import torch
 from vggt.dependency.vggsfm_utils import *
 
 
-def predict_tracks(images, conf=None, masks=None, max_query_pts=2048, query_frame_num=5,
+def predict_tracks(images, conf=None, points_3d=None, masks=None, max_query_pts=2048, query_frame_num=5,
                    keypoint_extractor="aliked+sp", 
                    max_points_num=163840, fine_tracking=True, complete_non_vis=True):
     """
@@ -53,6 +53,7 @@ def predict_tracks(images, conf=None, masks=None, max_query_pts=2048, query_fram
     pred_tracks = []
     pred_vis_scores = []
     pred_confs = []
+    pred_points = []
 
     fmaps_for_tracker = tracker.process_images_to_fmaps(images)
 
@@ -61,15 +62,16 @@ def predict_tracks(images, conf=None, masks=None, max_query_pts=2048, query_fram
 
     for query_index in query_frame_indexes:
         print(f"Predicting tracks for query frame {query_index}")
-        pred_track, pred_vis, pred_conf = _forward_on_query(
-            query_index, images, conf, fmaps_for_tracker, keypoint_extractors,
+        pred_track, pred_vis, pred_conf, pred_point = _forward_on_query(
+            query_index, images, conf, points_3d, fmaps_for_tracker, keypoint_extractors,
             tracker, max_points_num, fine_tracking, device
         )
 
         pred_tracks.append(pred_track)
         pred_vis_scores.append(pred_vis)
         pred_confs.append(pred_conf)
-
+        pred_points.append(pred_point)
+        
     if complete_non_vis:
         pred_tracks, pred_vis_scores, pred_confs = _augment_non_visible_frames(
             pred_tracks,
@@ -96,7 +98,7 @@ def predict_tracks(images, conf=None, masks=None, max_query_pts=2048, query_fram
     return pred_tracks, pred_vis_scores, pred_confs
 
 
-def _forward_on_query(query_index, images, conf, fmaps_for_tracker, keypoint_extractors, 
+def _forward_on_query(query_index, images, conf, points_3d, fmaps_for_tracker, keypoint_extractors, 
                      tracker, max_points_num, fine_tracking, device):
     """
     Process a single query frame for track prediction.
@@ -123,6 +125,7 @@ def _forward_on_query(query_index, images, conf, fmaps_for_tracker, keypoint_ext
     query_points = extract_keypoints(query_image, keypoint_extractors, round_keypoints=False)
     query_points = query_points[:, torch.randperm(query_points.shape[1], device=device)]
     
+    import pdb; pdb.set_trace()
     if conf is not None:
         query_points_long = query_points.squeeze(0).round().long()
         pred_conf = conf[query_index][query_points_long[:, 1], query_points_long[:, 0]]
@@ -132,6 +135,11 @@ def _forward_on_query(query_index, images, conf, fmaps_for_tracker, keypoint_ext
             pred_conf = pred_conf[valid_conf_mask]
     else:
         pred_conf = None
+
+    if points_3d is not None:
+        query_points_3d = points_3d[query_index][query_points_long[:, 1], query_points_long[:, 0]]
+    else:
+        query_points_3d = None
 
     reorder_index = calculate_index_mappings(query_index, frame_num, device=device)
     reorder_images = switch_tensor_order([images], reorder_index, dim=0)[0]

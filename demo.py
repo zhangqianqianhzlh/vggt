@@ -125,7 +125,6 @@ def demo_fn(args):
             # VGGT tracker requires multiple backbone runs to query different frames ((this is a problem caused by the training process))
             # Will be fixed in VGGT v2
 
-            import pdb; pdb.set_trace()
             # You can also change the pred_tracks to any tracks from other trackers
             # e.g., from COLMAP, from CoTracker, or by chaining 2D matches from Lightglue/LoFTR.
             pred_tracks, pred_vis_scores, pred_confs = predict_tracks(images, conf=depth_conf, 
