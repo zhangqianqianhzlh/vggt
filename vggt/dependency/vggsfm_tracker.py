@@ -22,7 +22,6 @@ from .track_modules.blocks import BasicEncoder, ShallowEncoder
 from .track_modules.base_track_predictor import BaseTrackerPredictor
 
 
-
 class TrackerPredictor(nn.Module):
     def __init__(self, **extra_args):
         super(TrackerPredictor, self).__init__()
@@ -53,18 +52,11 @@ class TrackerPredictor(nn.Module):
             latent_dim=32,
             hidden_size=256,
             fine=True,
-            use_spaceatt=False
+            use_spaceatt=False,
         )
 
     def forward(
-        self,
-        images,
-        query_points,
-        fmaps=None,
-        coarse_iters=6,
-        inference=True,
-        fine_tracking=True,
-        fine_chunk=40960,
+        self, images, query_points, fmaps=None, coarse_iters=6, inference=True, fine_tracking=True, fine_chunk=40960
     ):
         """
         Args:
@@ -90,10 +82,7 @@ class TrackerPredictor(nn.Module):
 
         # Coarse prediction
         coarse_pred_track_lists, pred_vis = self.coarse_predictor(
-            query_points=query_points,
-            fmaps=fmaps,
-            iters=coarse_iters,
-            down_ratio=self.coarse_down_ratio,
+            query_points=query_points, fmaps=fmaps, iters=coarse_iters, down_ratio=self.coarse_down_ratio
         )
         coarse_pred_track = coarse_pred_track_lists[-1]
 
@@ -103,12 +92,7 @@ class TrackerPredictor(nn.Module):
         if fine_tracking:
             # Refine the coarse prediction
             fine_pred_track, pred_score = refine_track(
-                images,
-                self.fine_fnet,
-                self.fine_predictor,
-                coarse_pred_track,
-                compute_score=False,
-                chunk=fine_chunk,
+                images, self.fine_fnet, self.fine_predictor, coarse_pred_track, compute_score=False, chunk=fine_chunk
             )
 
             if inference:
@@ -132,12 +116,7 @@ class TrackerPredictor(nn.Module):
         if self.coarse_down_ratio > 1:
             # whether or not scale down the input images to save memory
             fmaps = self.coarse_fnet(
-                F.interpolate(
-                    images,
-                    scale_factor=1 / self.coarse_down_ratio,
-                    mode="bilinear",
-                    align_corners=True,
-                )
+                F.interpolate(images, scale_factor=1 / self.coarse_down_ratio, mode="bilinear", align_corners=True)
             )
         else:
             fmaps = self.coarse_fnet(images)

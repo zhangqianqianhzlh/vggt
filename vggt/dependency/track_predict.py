@@ -8,11 +8,24 @@ import torch
 from vggt.dependency.vggsfm_utils import *
 
 
-def predict_tracks(images, conf=None, points_3d=None, masks=None, max_query_pts=2048, query_frame_num=5,
-                   keypoint_extractor="aliked+sp", 
-                   max_points_num=163840, fine_tracking=True, complete_non_vis=True):
+def predict_tracks(
+    images,
+    conf=None,
+    points_3d=None,
+    masks=None,
+    max_query_pts=2048,
+    query_frame_num=5,
+    keypoint_extractor="aliked+sp",
+    max_points_num=163840,
+    fine_tracking=True,
+    complete_non_vis=True,
+):
     """
     Predict tracks for the given images and masks.
+
+    TODO: support non-square images
+    TODO: support masks
+
 
     This function predicts the tracks for the given images and masks using the specified query method
     and track predictor. It finds query points, and predicts the tracks, visibility, and scores for the query frames.
@@ -31,7 +44,7 @@ def predict_tracks(images, conf=None, points_3d=None, masks=None, max_query_pts=
         pred_tracks: Numpy array containing the predicted tracks.
         pred_vis_scores: Numpy array containing the visibility scores for the tracks.
         pred_confs: Numpy array containing the confidence scores for the tracks.
-        pred_points: Numpy array containing the 3D points for the tracks.
+        pred_points_3d: Numpy array containing the 3D points for the tracks.
     """
 
     device = images.device
@@ -46,39 +59,25 @@ def predict_tracks(images, conf=None, points_3d=None, masks=None, max_query_pts=
         query_frame_indexes.remove(0)
     query_frame_indexes = [0, *query_frame_indexes]
 
-    if masks is None:
-        masks = torch.ones_like(images[:, 0:1])
-
-    keypoint_extractors = initialize_feature_extractors(max_query_pts, extractor_method=keypoint_extractor, device=device)
+    # TODO: add the functionality to handle the masks
+    keypoint_extractors = initialize_feature_extractors(
+        max_query_pts, extractor_method=keypoint_extractor, device=device
+    )
 
     pred_tracks = []
     pred_vis_scores = []
     pred_confs = []
-    pred_points = []
+    pred_points_3d = []
 
     fmaps_for_tracker = tracker.process_images_to_fmaps(images)
 
     if fine_tracking:
-        print("For faster inference, consider disabling fine_tracking") 
+        print("For faster inference, consider disabling fine_tracking")
 
     for query_index in query_frame_indexes:
         print(f"Predicting tracks for query frame {query_index}")
-        pred_track, pred_vis, pred_conf, pred_point = _forward_on_query(
-            query_index, images, conf, points_3d, fmaps_for_tracker, keypoint_extractors,
-            tracker, max_points_num, fine_tracking, device
-        )
-
-        pred_tracks.append(pred_track)
-        pred_vis_scores.append(pred_vis)
-        pred_confs.append(pred_conf)
-        pred_points.append(pred_point)
-        
-    if complete_non_vis:
-        pred_tracks, pred_vis_scores, pred_confs, pred_points = _augment_non_visible_frames(
-            pred_tracks,
-            pred_vis_scores,
-            pred_confs,
-            pred_points,
+        pred_track, pred_vis, pred_conf, pred_point_3d = _forward_on_query(
+            query_index,
             images,
             conf,
             points_3d,
@@ -87,27 +86,59 @@ def predict_tracks(images, conf=None, points_3d=None, masks=None, max_query_pts=
             tracker,
             max_points_num,
             fine_tracking,
-            min_vis=500,            
+            device,
+        )
+
+        pred_tracks.append(pred_track)
+        pred_vis_scores.append(pred_vis)
+        pred_confs.append(pred_conf)
+        pred_points_3d.append(pred_point_3d)
+
+    if complete_non_vis:
+        pred_tracks, pred_vis_scores, pred_confs, pred_points_3d = _augment_non_visible_frames(
+            pred_tracks,
+            pred_vis_scores,
+            pred_confs,
+            pred_points_3d,
+            images,
+            conf,
+            points_3d,
+            fmaps_for_tracker,
+            keypoint_extractors,
+            tracker,
+            max_points_num,
+            fine_tracking,
+            min_vis=500,
             non_vis_thresh=0.1,
             device=device,
         )
-    
+
     pred_tracks = np.concatenate(pred_tracks, axis=1)
     pred_vis_scores = np.concatenate(pred_vis_scores, axis=1)
     pred_confs = np.concatenate(pred_confs, axis=0) if pred_confs else None
-    pred_points = np.concatenate(pred_points, axis=0) if pred_points else None
-    
+    pred_points_3d = np.concatenate(pred_points_3d, axis=0) if pred_points_3d else None
+
     # from vggt.utils.visual_track import visualize_tracks_on_images
     # visualize_tracks_on_images(images[None], torch.from_numpy(pred_tracks[None]), torch.from_numpy(pred_vis_scores[None])>0.2, out_dir="track_visuals")
 
-    return pred_tracks, pred_vis_scores, pred_confs, pred_points
+    return pred_tracks, pred_vis_scores, pred_confs, pred_points_3d
 
 
-def _forward_on_query(query_index, images, conf, points_3d, fmaps_for_tracker, keypoint_extractors, 
-                     tracker, max_points_num, fine_tracking, device):
+def _forward_on_query(
+    query_index,
+    images,
+    conf,
+    points_3d,
+    fmaps_for_tracker,
+    keypoint_extractors,
+    tracker,
+    max_points_num,
+    fine_tracking,
+    device,
+):
     """
     Process a single query frame for track prediction.
-    
+
     Args:
         query_index: Index of the query frame
         images: Tensor of shape [S, 3, H, W] containing the input images
@@ -118,18 +149,19 @@ def _forward_on_query(query_index, images, conf, points_3d, fmaps_for_tracker, k
         max_points_num: Maximum number of points to process at once
         fine_tracking: Whether to use fine tracking
         device: Device to use for computation
-    
+
     Returns:
         pred_track: Predicted tracks
         pred_vis: Visibility scores for the tracks
         pred_conf: Confidence scores for the tracks
+        pred_point_3d: 3D points for the tracks
     """
     frame_num, _, height, width = images.shape
 
     query_image = images[query_index]
     query_points = extract_keypoints(query_image, keypoint_extractors, round_keypoints=False)
     query_points = query_points[:, torch.randperm(query_points.shape[1], device=device)]
-    
+
     # Query the confidence and points_3d at the keypoint locations
     if (conf is not None) and (points_3d is not None):
         assert height == width
@@ -141,7 +173,7 @@ def _forward_on_query(query_index, images, conf, points_3d, fmaps_for_tracker, k
         query_points_np = query_points_scaled.cpu().numpy()
 
         pred_conf = conf[query_index][query_points_np[:, 1], query_points_np[:, 0]]
-        pred_point = points_3d[query_index][query_points_np[:, 1], query_points_np[:, 0]]
+        pred_point_3d = points_3d[query_index][query_points_np[:, 1], query_points_np[:, 0]]
 
         # heuristic to remove low confidence points
         # should I export this as an input parameter?
@@ -149,10 +181,10 @@ def _forward_on_query(query_index, images, conf, points_3d, fmaps_for_tracker, k
         if valid_mask.sum() > 512:
             query_points = query_points[:, valid_mask]  # Make sure shape is compatible
             pred_conf = pred_conf[valid_mask]
-            pred_point = pred_point[valid_mask]
+            pred_point_3d = pred_point_3d[valid_mask]
     else:
         pred_conf = None
-        pred_point = None
+        pred_point_3d = None
 
     reorder_index = calculate_index_mappings(query_index, frame_num, device=device)
     reorder_images = switch_tensor_order([images], reorder_index, dim=0)[0]
@@ -171,51 +203,43 @@ def _forward_on_query(query_index, images, conf, points_3d, fmaps_for_tracker, k
         query_points = [query_points]
 
     pred_track, pred_vis, _ = predict_tracks_in_chunks(
-        tracker,
-        images_feed,
-        query_points,
-        fmaps_feed,
-        fine_tracking=fine_tracking,
+        tracker, images_feed, query_points, fmaps_feed, fine_tracking=fine_tracking
     )
 
-    pred_track, pred_vis = switch_tensor_order(
-        [pred_track, pred_vis], reorder_index, dim=1
-    )
-    
+    pred_track, pred_vis = switch_tensor_order([pred_track, pred_vis], reorder_index, dim=1)
+
     pred_track = pred_track.squeeze(0).float().cpu().numpy()
     pred_vis = pred_vis.squeeze(0).float().cpu().numpy()
 
-    return pred_track, pred_vis, pred_conf, pred_point
-
-
+    return pred_track, pred_vis, pred_conf, pred_point_3d
 
 
 def _augment_non_visible_frames(
-        pred_tracks:       list,          # ← running list of np.ndarrays
-        pred_vis_scores:   list,          # ← running list of np.ndarrays
-        pred_confs:        list,          # ← running list of np.ndarrays for confidence scores
-        pred_points:       list,          # ← running list of np.ndarrays for 3D points
-        images:            torch.Tensor,
-        conf, 
-        points_3d,
-        fmaps_for_tracker,
-        keypoint_extractors,
-        tracker,
-        max_points_num:    int,
-        fine_tracking:     bool,
-        *,
-        min_vis:        int   = 500,
-        non_vis_thresh: float = 0.1,
-        device:         torch.device = None,
+    pred_tracks: list,  # ← running list of np.ndarrays
+    pred_vis_scores: list,  # ← running list of np.ndarrays
+    pred_confs: list,  # ← running list of np.ndarrays for confidence scores
+    pred_points_3d: list,  # ← running list of np.ndarrays for 3D points
+    images: torch.Tensor,
+    conf,
+    points_3d,
+    fmaps_for_tracker,
+    keypoint_extractors,
+    tracker,
+    max_points_num: int,
+    fine_tracking: bool,
+    *,
+    min_vis: int = 500,
+    non_vis_thresh: float = 0.1,
+    device: torch.device = None,
 ):
     """
     Augment tracking for frames with insufficient visibility.
-    
+
     Args:
         pred_tracks: List of numpy arrays containing predicted tracks.
         pred_vis_scores: List of numpy arrays containing visibility scores.
         pred_confs: List of numpy arrays containing confidence scores.
-        pred_points: List of numpy arrays containing 3D points.
+        pred_points_3d: List of numpy arrays containing 3D points.
         images: Tensor of shape [S, 3, H, W] containing the input images.
         fmaps_for_tracker: Feature maps for the tracker
         keypoint_extractors: Initialized feature extractors
@@ -227,45 +251,41 @@ def _augment_non_visible_frames(
         device: Device to use for computation
         conf: Tensor of shape [S, 1, H, W] containing confidence scores
         points_3d: Tensor containing 3D points
-    
+
     Returns:
-        Updated pred_tracks, pred_vis_scores, pred_confs, and pred_points lists.
+        Updated pred_tracks, pred_vis_scores, pred_confs, and pred_points_3d lists.
     """
-    last_query   = -1
-    final_trial  = False
-    cur_extractors = keypoint_extractors   # may be replaced on the final trial
+    last_query = -1
+    final_trial = False
+    cur_extractors = keypoint_extractors  # may be replaced on the final trial
 
     while True:
         # --- visibility per frame -----------------------------------------
         vis_array = np.concatenate(pred_vis_scores, axis=1)
-        
+
         # Count frames with sufficient visibility using numpy
         sufficient_vis_count = (vis_array > non_vis_thresh).sum(axis=-1)
         non_vis_frames = np.where(sufficient_vis_count < min_vis)[0].tolist()
 
         if len(non_vis_frames) == 0:
-            break                                  
+            break
 
         print("Processing non visible frames:", non_vis_frames)
 
         # --- decide the frames & extractor for this round -----------------
         if non_vis_frames[0] == last_query:
             # same frame failed twice  ➜  final "all-in" attempt
-            final_trial      = True
-            cur_extractors   = initialize_feature_extractors(
-                2048,                               
-                extractor_method="sp+sift+aliked",
-                device=device,
-            )
-            query_frame_list = non_vis_frames      # blast them all at once
+            final_trial = True
+            cur_extractors = initialize_feature_extractors(2048, extractor_method="sp+sift+aliked", device=device)
+            query_frame_list = non_vis_frames  # blast them all at once
         else:
-            query_frame_list = [non_vis_frames[0]] # tackle one at a time
+            query_frame_list = [non_vis_frames[0]]  # tackle one at a time
 
         last_query = non_vis_frames[0]
 
         # --- run the tracker for every selected frame ---------------------
         for query_index in query_frame_list:
-            new_track, new_vis, new_conf, new_point = _forward_on_query(
+            new_track, new_vis, new_conf, new_point_3d = _forward_on_query(
                 query_index,
                 images,
                 conf,
@@ -280,10 +300,9 @@ def _augment_non_visible_frames(
             pred_tracks.append(new_track)
             pred_vis_scores.append(new_vis)
             pred_confs.append(new_conf)
-            pred_points.append(new_point)
+            pred_points_3d.append(new_point_3d)
 
         if final_trial:
-            break                                   # stop after blast round
+            break  # stop after blast round
 
-    return pred_tracks, pred_vis_scores, pred_confs, pred_points
-
+    return pred_tracks, pred_vis_scores, pred_confs, pred_points_3d

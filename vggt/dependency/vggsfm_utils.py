@@ -10,7 +10,6 @@ _RESNET_MEAN = [0.485, 0.456, 0.406]
 _RESNET_STD = [0.229, 0.224, 0.225]
 
 
-
 def build_vggsfm_tracker(model_path=None):
     if model_path is None:
         default_url = "https://huggingface.co/facebook/VGGSfM/resolve/main/vggsfm_v2_tracker.pt"
@@ -40,15 +39,10 @@ def generate_rank_by_dino(
     Returns:
         List of frame indices ranked by their representativeness
     """
-    
-    images = F.interpolate(
-        images,
-        (image_size, image_size),
-        mode="bilinear",
-        align_corners=False,
-    )
 
-    dino_v2_model = torch.hub.load('facebookresearch/dinov2', model_name)
+    images = F.interpolate(images, (image_size, image_size), mode="bilinear", align_corners=False)
+
+    dino_v2_model = torch.hub.load("facebookresearch/dinov2", model_name)
     dino_v2_model.eval()
     dino_v2_model = dino_v2_model.to(device)
 
@@ -65,16 +59,12 @@ def generate_rank_by_dino(
 
         # Compute the similarity matrix
         frame_feat_norm = frame_feat_norm.permute(1, 0, 2)
-        similarity_matrix = torch.bmm(
-            frame_feat_norm, frame_feat_norm.transpose(-1, -2)
-        )
+        similarity_matrix = torch.bmm(frame_feat_norm, frame_feat_norm.transpose(-1, -2))
         similarity_matrix = similarity_matrix.mean(dim=0)
     else:
         frame_feat = frame_feat["x_norm_clstoken"]
         frame_feat_norm = F.normalize(frame_feat, p=2, dim=1)
-        similarity_matrix = torch.mm(
-            frame_feat_norm, frame_feat_norm.transpose(-1, -2)
-        )
+        similarity_matrix = torch.mm(frame_feat_norm, frame_feat_norm.transpose(-1, -2))
 
     distance_matrix = 100 - similarity_matrix.clone()
 
@@ -86,10 +76,8 @@ def generate_rank_by_dino(
     most_common_frame_index = torch.argmax(similarity_sum).item()
 
     # Conduct FPS sampling starting from the most common frame
-    fps_idx = farthest_point_sampling(
-        distance_matrix, query_frame_num, most_common_frame_index
-    )
-    
+    fps_idx = farthest_point_sampling(distance_matrix, query_frame_num, most_common_frame_index)
+
     # Clean up all tensors and models to free memory
     del frame_feat, frame_feat_norm, similarity_matrix, distance_matrix
     del dino_v2_model
@@ -98,9 +86,7 @@ def generate_rank_by_dino(
     return fps_idx
 
 
-def farthest_point_sampling(
-    distance_matrix, num_samples, most_common_frame_index=0
-):
+def farthest_point_sampling(distance_matrix, num_samples, most_common_frame_index=0):
     """
     Farthest point sampling algorithm to select diverse frames.
 
@@ -168,10 +154,7 @@ def switch_tensor_order(tensors, order, dim=1):
     Returns:
         List of reordered tensors
     """
-    return [
-        torch.index_select(tensor, dim, order) if tensor is not None else None
-        for tensor in tensors
-    ]
+    return [torch.index_select(tensor, dim, order) if tensor is not None else None for tensor in tensors]
 
 
 def initialize_feature_extractors(max_query_num, det_thres=0.005, extractor_method="aliked", device="cuda"):
@@ -188,26 +171,26 @@ def initialize_feature_extractors(max_query_num, det_thres=0.005, extractor_meth
         Dictionary of initialized extractors
     """
     extractors = {}
-    methods = extractor_method.lower().split('+')
+    methods = extractor_method.lower().split("+")
 
     for method in methods:
         method = method.strip()
         if method == "aliked":
             aliked_extractor = ALIKED(max_num_keypoints=max_query_num, detection_threshold=det_thres)
-            extractors['aliked'] = aliked_extractor.to(device).eval()
+            extractors["aliked"] = aliked_extractor.to(device).eval()
         elif method == "sp":
             sp_extractor = SuperPoint(max_num_keypoints=max_query_num, detection_threshold=det_thres)
-            extractors['sp'] = sp_extractor.to(device).eval()
+            extractors["sp"] = sp_extractor.to(device).eval()
         elif method == "sift":
             sift_extractor = SIFT(max_num_keypoints=max_query_num)
-            extractors['sift'] = sift_extractor.to(device).eval()
+            extractors["sift"] = sift_extractor.to(device).eval()
         else:
             print(f"Warning: Unknown feature extractor '{method}', ignoring.")
 
     if not extractors:
         print(f"Warning: No valid extractors found in '{extractor_method}'. Using ALIKED by default.")
         aliked_extractor = ALIKED(max_num_keypoints=max_query_num, detection_threshold=det_thres)
-        extractors['aliked'] = aliked_extractor.to(device).eval()
+        extractors["aliked"] = aliked_extractor.to(device).eval()
 
     return extractors
 
@@ -240,17 +223,8 @@ def extract_keypoints(query_image, extractors, round_keypoints=True):
     return query_points
 
 
-
-
-
 def predict_tracks_in_chunks(
-    track_predictor,
-    images_feed,
-    query_points_list,
-    fmaps_feed,
-    fine_tracking,
-    num_splits=None,
-    fine_chunk=40960,
+    track_predictor, images_feed, query_points_list, fmaps_feed, fine_tracking, num_splits=None, fine_chunk=40960
 ):
     """
     Process a list of query points to avoid memory issues.
@@ -272,7 +246,7 @@ def predict_tracks_in_chunks(
         if num_splits is None:
             num_splits = 1
         query_points_list = torch.chunk(query_points, num_splits, dim=1)
-    
+
     # Ensure query_points_list is a list for iteration (as torch.chunk returns a tuple)
     if isinstance(query_points_list, tuple):
         query_points_list = list(query_points_list)
@@ -284,11 +258,7 @@ def predict_tracks_in_chunks(
     for split_points in query_points_list:
         # Feed into track predictor for each split
         fine_pred_track, _, pred_vis, pred_score = track_predictor(
-            images_feed,
-            split_points,
-            fmaps=fmaps_feed,
-            fine_tracking=fine_tracking,
-            fine_chunk=fine_chunk,
+            images_feed, split_points, fmaps=fmaps_feed, fine_tracking=fine_tracking, fine_chunk=fine_chunk
         )
         fine_pred_track_list.append(fine_pred_track)
         pred_vis_list.append(pred_vis)
@@ -297,11 +267,10 @@ def predict_tracks_in_chunks(
     # Concatenate the results from all splits
     fine_pred_track = torch.cat(fine_pred_track_list, dim=2)
     pred_vis = torch.cat(pred_vis_list, dim=2)
-    
+
     if pred_score is not None:
         pred_score = torch.cat(pred_score_list, dim=2)
     else:
         pred_score = None
 
     return fine_pred_track, pred_vis, pred_score
-
