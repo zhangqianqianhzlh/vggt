@@ -9,7 +9,7 @@ import pycolmap
 from .projection import project_3D_points_np
 
 
-def batch_matrix_to_pycolmap(
+def batch_np_matrix_to_pycolmap(
     points3d,
     extrinsics,
     intrinsics,
@@ -24,9 +24,13 @@ def batch_matrix_to_pycolmap(
     min_inlier_per_frame=64
 ):
     """
-    Convert Batched Pytorch Tensors to PyCOLMAP
+    Convert Batched NumPy Arrays to PyCOLMAP
 
     Check https://github.com/colmap/pycolmap for more details about its format
+    
+    NOTE: different from VGGSfM, this function:
+    1. Use np instead of torch
+    2. Frame index and camera id starts from 1 rather than 0 (to fit the format of PyCOLMAP)
     """
 
     # points3d: Px3
@@ -37,7 +41,7 @@ def batch_matrix_to_pycolmap(
     # image_size: 2, assume all the frames have been padded to the same size
     # where N is the number of frames and P is the number of tracks
 
-    
+
     N, P, _ = tracks.shape
     assert len(extrinsics) == N
     assert len(intrinsics) == N
@@ -45,43 +49,27 @@ def batch_matrix_to_pycolmap(
     assert image_size.shape[0] == 2
 
     if max_reproj_error is not None:
-        projected_points_2d, projected_points_cam = project_3D_points_np(points3d, extrinsics, intrinsics)
-        import pdb; pdb.set_trace()
-        
-        
-        projected_diff = (projected_points_2d - tracks).norm(dim=-1)
+        projected_points_2d, projected_points_cam = project_3D_points_np(points3d, 
+                                                        extrinsics, intrinsics)        
+        projected_diff = np.linalg.norm(projected_points_2d - tracks, axis=-1)
         projected_points_2d[projected_points_cam[:, -1] <= 0] = 1e6
         reproj_mask = projected_diff < max_reproj_error
 
     if masks is not None and reproj_mask is not None:
-        masks = torch.logical_and(masks, reproj_mask)
+        masks = np.logical_and(masks, reproj_mask)
     elif masks is not None:
         masks = masks
     else:
         masks = reproj_mask
 
     assert masks is not None
-    
-    
+
     if masks.sum(1).min() < min_inlier_per_frame:
-        print(f"Not enough inliers per frame, skip BA for this sequence.")
+        print(f"Not enough inliers per frame, skip BA.")
         return None, None
     
-    extrinsics = extrinsics.cpu().numpy()
-    intrinsics = intrinsics.cpu().numpy()
-
-    if extra_params is not None:
-        extra_params = extra_params.cpu().numpy()
-
-
-    tracks = tracks.cpu().numpy()
-    points3d = points3d.cpu().numpy()
-    image_size = image_size.cpu().numpy()
-
     # Reconstruction object, following the format of PyCOLMAP/COLMAP
     reconstruction = pycolmap.Reconstruction()
-
-    masks = masks.cpu().numpy()
 
     inlier_num = masks.sum(0)
     valid_mask = inlier_num >= 2  # a track is invalid if without two inliers
@@ -108,16 +96,6 @@ def batch_matrix_to_pycolmap(
                         intrinsics[fidx][1, 2],
                     ]
                 )
-            elif camera_type == "SIMPLE_RADIAL":
-                focal = (intrinsics[fidx][0, 0] + intrinsics[fidx][1, 1]) / 2
-                pycolmap_intri = np.array(
-                    [
-                        focal,
-                        intrinsics[fidx][0, 2],
-                        intrinsics[fidx][1, 2],
-                        extra_params[fidx][0],
-                    ]
-                )
             elif camera_type == "SIMPLE_PINHOLE":
                 focal = (intrinsics[fidx][0, 0] + intrinsics[fidx][1, 1]) / 2
                 pycolmap_intri = np.array(
@@ -125,6 +103,17 @@ def batch_matrix_to_pycolmap(
                         focal,
                         intrinsics[fidx][0, 2],
                         intrinsics[fidx][1, 2],
+                    ]
+                )
+            elif camera_type == "SIMPLE_RADIAL":
+                raise NotImplementedError("SIMPLE_RADIAL is not supported yet")
+                focal = (intrinsics[fidx][0, 0] + intrinsics[fidx][1, 1]) / 2
+                pycolmap_intri = np.array(
+                    [
+                        focal,
+                        intrinsics[fidx][0, 2],
+                        intrinsics[fidx][1, 2],
+                        extra_params[fidx][0],
                     ]
                 )
             else:
@@ -137,7 +126,7 @@ def batch_matrix_to_pycolmap(
                 width=image_size[0],
                 height=image_size[1],
                 params=pycolmap_intri,
-                camera_id=fidx,
+                camera_id=fidx + 1,
             )
 
             # add camera
@@ -148,9 +137,10 @@ def batch_matrix_to_pycolmap(
             pycolmap.Rotation3d(extrinsics[fidx][:3, :3]),
             extrinsics[fidx][:3, 3],
         )  # Rot and Trans
+        
         image = pycolmap.Image(
-            id=fidx,
-            name=f"image_{fidx}",
+            id= fidx + 1,
+            name=f"image_{fidx + 1}",
             camera_id=camera.camera_id,
             cam_from_world=cam_from_world,
         )
@@ -158,6 +148,7 @@ def batch_matrix_to_pycolmap(
         points2D_list = []
 
         point2D_idx = 0
+        
         # NOTE point3D_id start by 1
         for point3D_id in range(1, num_points3D + 1):
             original_track_idx = valid_idx[point3D_id - 1]
@@ -176,7 +167,7 @@ def batch_matrix_to_pycolmap(
 
                     # add element
                     track = reconstruction.points3D[point3D_id].track
-                    track.add_element(fidx, point2D_idx)
+                    track.add_element(fidx + 1, point2D_idx)
                     point2D_idx += 1
 
         assert point2D_idx == len(points2D_list)
@@ -185,24 +176,25 @@ def batch_matrix_to_pycolmap(
             image.points2D = pycolmap.ListPoint2D(points2D_list)
             image.registered = True
         except:
-            print(f"frame {fidx} is out of BA")
+            print(f"frame {fidx + 1} is out of BA")
             image.registered = False
 
         # add image
         reconstruction.add_image(image)
 
+    import pdb; pdb.set_trace()
     return reconstruction, valid_mask
 
 
 def pycolmap_to_batch_matrix(
-    reconstruction, device="cuda", camera_type="SIMPLE_PINHOLE"
+    reconstruction, device="cpu", camera_type="SIMPLE_PINHOLE"
 ):
     """
-    Convert a PyCOLMAP Reconstruction Object to batched PyTorch tensors.
+    Convert a PyCOLMAP Reconstruction Object to batched NumPy arrays.
 
     Args:
         reconstruction (pycolmap.Reconstruction): The reconstruction object from PyCOLMAP.
-        device (str): The device to place the tensors on (default: "cuda").
+        device (str): Ignored in NumPy version (kept for API compatibility).
         camera_type (str): The type of camera model used (default: "SIMPLE_PINHOLE").
 
     Returns:
@@ -215,7 +207,6 @@ def pycolmap_to_batch_matrix(
 
     for point3D_id in reconstruction.points3D:
         points3D[point3D_id - 1] = reconstruction.points3D[point3D_id].xyz
-    points3D = torch.from_numpy(points3D).to(device)
 
     extrinsics = []
     intrinsics = []
@@ -224,7 +215,7 @@ def pycolmap_to_batch_matrix(
 
     for i in range(num_images):
         # Extract and append extrinsics
-        pyimg = reconstruction.images[i]
+        pyimg = reconstruction.images[i + 1]
         pycam = reconstruction.cameras[pyimg.camera_id]
         matrix = pyimg.cam_from_world.matrix()
         extrinsics.append(matrix)
@@ -236,13 +227,12 @@ def pycolmap_to_batch_matrix(
         if camera_type == "SIMPLE_RADIAL":
             extra_params.append(pycam.params[-1])
 
-    # Convert lists to torch tensors
-    extrinsics = torch.from_numpy(np.stack(extrinsics)).to(device)
-
-    intrinsics = torch.from_numpy(np.stack(intrinsics)).to(device)
+    # Convert lists to NumPy arrays instead of torch tensors
+    extrinsics = np.stack(extrinsics)
+    intrinsics = np.stack(intrinsics)
 
     if camera_type == "SIMPLE_RADIAL":
-        extra_params = torch.from_numpy(np.stack(extra_params)).to(device)
+        extra_params = np.stack(extra_params)
         extra_params = extra_params[:, None]
 
     return points3D, extrinsics, intrinsics, extra_params

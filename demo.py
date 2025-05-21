@@ -148,6 +148,8 @@ def demo_fn(args):
             shared_camera = True
             camera_type = "SIMPLE_PINHOLE"
             
+            # TODO: add support for radial distortion, which needs extra_params
+            
             reconstruction, valid_track_mask = batch_matrix_to_pycolmap(
                 pred_points_3d,
                 extrinsic,
