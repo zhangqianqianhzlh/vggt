@@ -23,7 +23,7 @@ from vggt.models.vggt import VGGT
 from vggt.utils.load_fn import load_and_preprocess_images_square
 from vggt.utils.pose_enc import pose_encoding_to_extri_intri
 from vggt.utils.geometry import unproject_depth_map_to_point_map
-from vggt.dependency.track_predict import predict_tracks
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description='VGGT Demo')
@@ -119,6 +119,9 @@ def demo_fn(args):
 
     
     if args.use_ba:
+        from vggt.dependency.track_predict import predict_tracks
+        from vggt.dependency.np_to_pycolmap import batch_matrix_to_pycolmap
+
         with torch.cuda.amp.autocast(dtype=dtype):
             # Predicting Tracks
             # Using VGGSfM tracker instead of VGGT tracker for efficiency
@@ -138,11 +141,28 @@ def demo_fn(args):
             # rescale the intrinsic matrix from 518 to 1024
             intrinsic[:, :2, :] *= scale
             
+            track_mask = (pred_vis_scores > 0.2) 
+            image_size = np.array(images.shape[-2:])
+            
+            max_reproj_error = 8.0
+            shared_camera = True
+            camera_type = "SIMPLE_PINHOLE"
+            
+            reconstruction, valid_track_mask = batch_matrix_to_pycolmap(
+                pred_points_3d,
+                extrinsic,
+                intrinsic,
+                pred_tracks,
+                image_size,
+                masks=track_mask,
+                max_reproj_error=max_reproj_error,
+                shared_camera=shared_camera,
+                camera_type=camera_type,
+            )
+
+            
+            
             # Now we have the tracks, visibility scores, confidences, and 3D points
-            
-            
-            
-            
             
             
             import pdb; pdb.set_trace()
