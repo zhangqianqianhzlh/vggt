@@ -170,8 +170,10 @@ def demo_fn(args):
         # 
         # 
         from vggt.dependency.np_to_pycolmap import batch_np_matrix_to_pycolmap_wo_track
+
+        image_size = np.array([vggt_fixed_resolution, vggt_fixed_resolution])
         batch_np_matrix_to_pycolmap_wo_track(
-            points3d,
+            points_3d,
             extrinsic,
             intrinsic,
             image_size,
