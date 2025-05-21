@@ -28,6 +28,8 @@ def _is_torch(x: ArrayLike) -> bool:
 # —— Public façade ————————————————————————————————————————————————————————
 # -----------------------------------------------------------------------------
 
+
+
 def single_undistortion(
     params: ArrayLike,
     tracks_normalized: ArrayLike,
@@ -57,6 +59,21 @@ def iterative_undistortion(
         return _iterative_undistortion_torch(
             params, tracks_normalized, max_iterations, max_step_norm, rel_step_size
         )
+    else:
+        raise TypeError("Unsupported array type. Use NumPy ndarray or torch.Tensor.")
+
+
+def apply_distortion(
+    extra_params: ArrayLike,
+    u: ArrayLike,
+    v: ArrayLike,
+) -> Tuple[ArrayLike, ArrayLike]:
+    """Apply distortion to normalized coordinates using the appropriate backend.
+    """
+    if _is_numpy(u) and _is_numpy(v) and _is_numpy(extra_params):
+        return _apply_distortion_np(extra_params, u, v)
+    elif _is_torch(u) and _is_torch(v) and _is_torch(extra_params):
+        return _apply_distortion_torch(extra_params, u, v)
     else:
         raise TypeError("Unsupported array type. Use NumPy ndarray or torch.Tensor.")
 
