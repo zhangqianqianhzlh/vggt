@@ -117,8 +117,13 @@ def demo_fn(args):
     extrinsic, intrinsic, depth_map, depth_conf = run_VGGT(model, images, dtype, vggt_fixed_resolution)
     points_3d = unproject_depth_map_to_point_map(depth_map, extrinsic, intrinsic)
 
+
+    max_reproj_error = 8.0
+    shared_camera = True
+    camera_type = "SIMPLE_PINHOLE"
     
     if args.use_ba:
+        import pycolmap
         from vggt.dependency.track_predict import predict_tracks
         from vggt.dependency.np_to_pycolmap import batch_np_matrix_to_pycolmap
 
@@ -144,10 +149,6 @@ def demo_fn(args):
             track_mask = (pred_vis_scores > 0.2) 
             image_size = np.array(images.shape[-2:])
             
-            max_reproj_error = 8.0
-            shared_camera = True
-            camera_type = "SIMPLE_PINHOLE"
-            
             # TODO: add support for radial distortion, which needs extra_params
             
             reconstruction, valid_track_mask = batch_np_matrix_to_pycolmap(
@@ -161,13 +162,33 @@ def demo_fn(args):
                 shared_camera=shared_camera,
                 camera_type=camera_type,
             )
+            ba_options = pycolmap.BundleAdjustmentOptions()
+            pycolmap.bundle_adjustment(reconstruction, ba_options)
 
-            
-            
-            # Now we have the tracks, visibility scores, confidences, and 3D points
-            
-            
-            import pdb; pdb.set_trace()
+            # filtered_points_3d, pred_extrinsic, pred_intrinsic, _ = pycolmap_to_batch_np_matrix(reconstruction, device=device, camera_type=camera_type )
+    else:
+        # 
+        # 
+        from vggt.dependency.np_to_pycolmap import batch_np_matrix_to_pycolmap_wo_track
+        batch_np_matrix_to_pycolmap_wo_track(
+            points3d,
+            extrinsic,
+            intrinsic,
+            image_size,
+            shared_camera=shared_camera,
+            camera_type=camera_type,
+        )
+        import pdb; pdb.set_trace()
+        
+
+
+
+    sparse_reconstruction_dir = os.path.join(args.scene_dir, "sparse")
+    os.makedirs(sparse_reconstruction_dir, exist_ok=True)
+    reconstruction.write(sparse_reconstruction_dir)
+
+    
+    import pdb; pdb.set_trace()
 
 
 
