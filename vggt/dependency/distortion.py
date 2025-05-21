@@ -298,7 +298,10 @@ if __name__ == "__main__":
 
     # Test against pycolmap reference implementation
     print("Testing against pycolmap reference...")
-    max_diff = 0
+    max_torch_diff = 0
+    max_np_diff = 0
+    max_impl_diff = 0
+    
     for i in range(1000):
         # Define distortion parameters (assuming 1 parameter for simplicity)
         B = random.randint(1, 500)
@@ -315,6 +318,11 @@ if __name__ == "__main__":
         # Undistort the tracks using both backends
         undistorted_tracks_torch = iterative_undistortion(params_torch, tracks_normalized_torch)
         undistorted_tracks_np = iterative_undistortion(params_np, tracks_normalized_np)
+        
+        # Track current iteration differences
+        iter_torch_diff = 0
+        iter_np_diff = 0
+        iter_impl_diff = 0
         
         # Compare with pycolmap
         for b in range(B):
@@ -338,24 +346,23 @@ if __name__ == "__main__":
             # Compare torch vs numpy
             impl_diff = np.median(np.abs(undistorted_tracks_torch[b].numpy() - undistorted_tracks_np[b]))
             
-            max_diff = max(max_diff, torch_diff, np_diff, impl_diff)
+            iter_torch_diff = max(iter_torch_diff, torch_diff)
+            iter_np_diff = max(iter_np_diff, np_diff)
+            iter_impl_diff = max(iter_impl_diff, impl_diff)
+        
+        max_torch_diff = max(max_torch_diff, iter_torch_diff)
+        max_np_diff = max(max_np_diff, iter_np_diff)
+        max_impl_diff = max(max_impl_diff, iter_impl_diff)
             
         if i % 10 == 0:
-            print(f"Iteration {i}, max_diff: {max_diff}")
+            print(f"Iteration {i}:")
+            print(f"  PyTorch vs PyColmap diff: {iter_torch_diff:.8f}")
+            print(f"  NumPy vs PyColmap diff:   {iter_np_diff:.8f}")
+            print(f"  PyTorch vs NumPy diff:    {iter_impl_diff:.8f}")
 
-    print(f"Maximum difference across all implementations: {max_diff}")
+    print("\nFinal maximum differences:")
+    print(f"  PyTorch vs PyColmap: {max_torch_diff:.8f}")
+    print(f"  NumPy vs PyColmap:   {max_np_diff:.8f}")
+    print(f"  PyTorch vs NumPy:    {max_impl_diff:.8f}")
     
-    # Benchmark performance
-    print("\nPerformance benchmark:")
-    for backend, params, tracks in [
-        ("NumPy", params_np, tracks_normalized_np),
-        ("PyTorch", params_torch, tracks_normalized_torch)
-    ]:
-        start_time = time.time()
-        iterative_undistortion(params, tracks)
-        elapsed = time.time() - start_time
-        print(f"{backend} backend: {elapsed:.4f} seconds")
-        
-    print("Test finished ✓")
-
 
