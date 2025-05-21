@@ -23,7 +23,7 @@ from vggt.models.vggt import VGGT
 from vggt.utils.load_fn import load_and_preprocess_images_square
 from vggt.utils.pose_enc import pose_encoding_to_extri_intri
 from vggt.utils.geometry import unproject_depth_map_to_point_map
-
+from vggt.utils.helper import create_pixel_coordinate_grid, randomly_limit_trues
 
 def parse_args():
     parser = argparse.ArgumentParser(description='VGGT Demo')
@@ -64,42 +64,6 @@ def run_VGGT(model, images, dtype, resolution=518):
     return extrinsic, intrinsic, depth_map, depth_conf
 
 
-
-
-def create_pixel_coordinate_grid(num_frames, height, width):
-    """
-    Creates a grid of pixel coordinates and frame indices for all frames.
-    
-    Args:
-        num_frames (int): Number of frames
-        height (int): Height of each frame
-        width (int): Width of each frame
-        
-    Returns:
-        tuple: A tuple containing:
-            - points_xyf (numpy.ndarray): Array of shape (num_frames, height, width, 3) 
-                                            with x, y coordinates and frame indices
-            - y_coords (numpy.ndarray): Array of y coordinates for all frames
-            - x_coords (numpy.ndarray): Array of x coordinates for all frames
-            - f_coords (numpy.ndarray): Array of frame indices for all frames
-    """
-    # Create coordinate grids for a single frame
-    y_grid, x_grid = np.indices((height, width), dtype=np.float32)
-    x_grid = x_grid[np.newaxis, :, :]
-    y_grid = y_grid[np.newaxis, :, :]
-
-    # Broadcast to all frames
-    x_coords = np.broadcast_to(x_grid, (num_frames, height, width))
-    y_coords = np.broadcast_to(y_grid, (num_frames, height, width))
-
-    # Create frame indices and broadcast
-    f_idx = np.arange(num_frames, dtype=np.float32)[:, np.newaxis, np.newaxis]
-    f_coords = np.broadcast_to(f_idx, (num_frames, height, width))
-
-    # Stack coordinates and frame indices
-    points_xyf = np.stack((x_coords, y_coords, f_coords), axis=-1)
-    
-    return points_xyf
 
 
 def demo_fn(args):
@@ -206,9 +170,13 @@ def demo_fn(args):
 
         # filtered_points_3d, pred_extrinsic, pred_intrinsic, _ = pycolmap_to_batch_np_matrix(reconstruction, device=device, camera_type=camera_type )
     else:
+        conf_thres_value = 5 # hard-coded to 5
+        max_points_for_colmap = 100000
+        # 
+        
         from vggt.dependency.np_to_pycolmap import batch_np_matrix_to_pycolmap_wo_track
-        image_size = np.array([vggt_fixed_resolution, vggt_fixed_resolution])
 
+        image_size = np.array([vggt_fixed_resolution, vggt_fixed_resolution])        
         num_frames, height, width, _ = points_3d.shape
         
 
@@ -219,10 +187,13 @@ def demo_fn(args):
         points_rgb = (points_rgb.cpu().numpy() * 255).astype(np.uint8)
         points_rgb = points_rgb.transpose(0, 2, 3, 1)
         
+        # (S, H, W, 3), with x, y coordinates and frame indices
         points_xyf = create_pixel_coordinate_grid(num_frames, height, width)
-        import pdb; pdb.set_trace()
 
-        points_3d_flat = points_3d.reshape(-1, 3)
+        conf_mask = (depth_conf >= conf_thres_value)
+
+
+        import pdb; pdb.set_trace()
 
         batch_np_matrix_to_pycolmap_wo_track(
             points_3d,
