@@ -284,3 +284,4 @@ def predict_tracks_in_chunks(
         pred_score = None
 
     return fine_pred_track, pred_vis, pred_score
+

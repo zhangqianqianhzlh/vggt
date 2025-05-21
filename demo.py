@@ -43,7 +43,7 @@ def run_VGGT(model, images, dtype, resolution=518):
     assert images.shape[1] == 3
     
     # hard-coded to use 518
-    images = F.interpolate(images, size=(resolution, resolution), mode="bicubic", align_corners=False)
+    images = F.interpolate(images, size=(resolution, resolution), mode="bilinear", align_corners=False)
     
     with torch.no_grad():
         with torch.cuda.amp.autocast(dtype=dtype):
@@ -62,6 +62,44 @@ def run_VGGT(model, images, dtype, resolution=518):
     depth_map = depth_map.squeeze(0).cpu().numpy()
     depth_conf = depth_conf.squeeze(0).cpu().numpy()
     return extrinsic, intrinsic, depth_map, depth_conf
+
+
+
+
+def create_pixel_coordinate_grid(num_frames, height, width):
+    """
+    Creates a grid of pixel coordinates and frame indices for all frames.
+    
+    Args:
+        num_frames (int): Number of frames
+        height (int): Height of each frame
+        width (int): Width of each frame
+        
+    Returns:
+        tuple: A tuple containing:
+            - points_xyf (numpy.ndarray): Array of shape (num_frames, height, width, 3) 
+                                            with x, y coordinates and frame indices
+            - y_coords (numpy.ndarray): Array of y coordinates for all frames
+            - x_coords (numpy.ndarray): Array of x coordinates for all frames
+            - f_coords (numpy.ndarray): Array of frame indices for all frames
+    """
+    # Create coordinate grids for a single frame
+    y_grid, x_grid = np.indices((height, width), dtype=np.float32)
+    x_grid = x_grid[np.newaxis, :, :]
+    y_grid = y_grid[np.newaxis, :, :]
+
+    # Broadcast to all frames
+    x_coords = np.broadcast_to(x_grid, (num_frames, height, width))
+    y_coords = np.broadcast_to(y_grid, (num_frames, height, width))
+
+    # Create frame indices and broadcast
+    f_idx = np.arange(num_frames, dtype=np.float32)[:, np.newaxis, np.newaxis]
+    f_coords = np.broadcast_to(f_idx, (num_frames, height, width))
+
+    # Stack coordinates and frame indices
+    points_xyf = np.stack((x_coords, y_coords, f_coords), axis=-1)
+    
+    return points_xyf
 
 
 def demo_fn(args):
@@ -126,7 +164,8 @@ def demo_fn(args):
         import pycolmap
         from vggt.dependency.track_predict import predict_tracks
         from vggt.dependency.np_to_pycolmap import batch_np_matrix_to_pycolmap
-
+        image_size = np.array(images.shape[-2:])
+        
         with torch.cuda.amp.autocast(dtype=dtype):
             # Predicting Tracks
             # Using VGGSfM tracker instead of VGGT tracker for efficiency
@@ -142,36 +181,49 @@ def demo_fn(args):
                                                                       keypoint_extractor="aliked+sp", 
                                                                       max_points_num=163840, fine_tracking=True)
             torch.cuda.empty_cache()
+    
+        # rescale the intrinsic matrix from 518 to 1024
+        intrinsic[:, :2, :] *= scale
         
-            # rescale the intrinsic matrix from 518 to 1024
-            intrinsic[:, :2, :] *= scale
-            
-            track_mask = (pred_vis_scores > 0.2) 
-            image_size = np.array(images.shape[-2:])
-            
-            # TODO: add support for radial distortion, which needs extra_params
-            
-            reconstruction, valid_track_mask = batch_np_matrix_to_pycolmap(
-                pred_points_3d,
-                extrinsic,
-                intrinsic,
-                pred_tracks,
-                image_size,
-                masks=track_mask,
-                max_reproj_error=max_reproj_error,
-                shared_camera=shared_camera,
-                camera_type=camera_type,
-            )
-            ba_options = pycolmap.BundleAdjustmentOptions()
-            pycolmap.bundle_adjustment(reconstruction, ba_options)
+        track_mask = (pred_vis_scores > 0.2) 
+        
+        
+        # TODO: add support for radial distortion, which needs extra_params
+        
+        reconstruction, valid_track_mask = batch_np_matrix_to_pycolmap(
+            pred_points_3d,
+            extrinsic,
+            intrinsic,
+            pred_tracks,
+            image_size,
+            masks=track_mask,
+            max_reproj_error=max_reproj_error,
+            shared_camera=shared_camera,
+            camera_type=camera_type,
+        )
+        ba_options = pycolmap.BundleAdjustmentOptions()
+        pycolmap.bundle_adjustment(reconstruction, ba_options)
 
-            # filtered_points_3d, pred_extrinsic, pred_intrinsic, _ = pycolmap_to_batch_np_matrix(reconstruction, device=device, camera_type=camera_type )
+        # filtered_points_3d, pred_extrinsic, pred_intrinsic, _ = pycolmap_to_batch_np_matrix(reconstruction, device=device, camera_type=camera_type )
     else:
-        # 
-        # 
         from vggt.dependency.np_to_pycolmap import batch_np_matrix_to_pycolmap_wo_track
-
         image_size = np.array([vggt_fixed_resolution, vggt_fixed_resolution])
+
+        num_frames, height, width, _ = points_3d.shape
+        
+
+        # get the points, 2D positions, frame index, and rgb colors
+        
+        # points_3d SxHxWx3, numpy array
+        points_rgb =  F.interpolate(images, size=(vggt_fixed_resolution, vggt_fixed_resolution), mode="bilinear", align_corners=False)
+        points_rgb = (points_rgb.cpu().numpy() * 255).astype(np.uint8)
+        points_rgb = points_rgb.transpose(0, 2, 3, 1)
+        
+        points_xyf = create_pixel_coordinate_grid(num_frames, height, width)
+        import pdb; pdb.set_trace()
+
+        points_3d_flat = points_3d.reshape(-1, 3)
+
         batch_np_matrix_to_pycolmap_wo_track(
             points_3d,
             extrinsic,
