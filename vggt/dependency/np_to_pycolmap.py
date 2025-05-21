@@ -59,6 +59,7 @@ def batch_np_matrix_to_pycolmap(
         projected_points_2d[projected_points_cam[:, -1] <= 0] = 1e6
         reproj_mask = projected_diff < max_reproj_error
 
+
     if masks is not None and reproj_mask is not None:
         masks = np.logical_and(masks, reproj_mask)
     elif masks is not None:
@@ -187,6 +188,7 @@ def batch_np_matrix_to_pycolmap(
         reconstruction.add_image(image)
 
     import pdb; pdb.set_trace()
+    # need to be really carefully checked
     return reconstruction, valid_mask
 
 
