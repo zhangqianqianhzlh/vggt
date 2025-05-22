@@ -155,6 +155,9 @@ def demo_fn(args):
         
         # TODO: add support for radial distortion, which needs extra_params
         
+        # TODO: iterate BA
+        # TODO: add point cloud color
+        
         reconstruction, valid_track_mask = batch_np_matrix_to_pycolmap(
             pred_points_3d,
             extrinsic,
@@ -195,6 +198,7 @@ def demo_fn(args):
         points_rgb = points_rgb[conf_mask]
 
 
+        print("Converting to COLMAP format")
         reconstruction = batch_np_matrix_to_pycolmap_wo_track(
             points_3d,
             points_xyf,
@@ -206,9 +210,11 @@ def demo_fn(args):
             camera_type=camera_type,
         )
         
+        base_image_path_list = [os.path.basename(path) for path in image_path_list]
+        
         reconstruction = rename_colmap_recons_and_rescale_camera(
             reconstruction,
-            image_path_list,
+            base_image_path_list,
             original_coords.cpu().numpy(),
             img_size=vggt_fixed_resolution,
             shift_point2d_to_original_res=True,
@@ -217,14 +223,13 @@ def demo_fn(args):
         
         
 
-
+    print(f"Saving reconstruction to {args.scene_dir}/sparse")
     sparse_reconstruction_dir = os.path.join(args.scene_dir, "sparse")
     os.makedirs(sparse_reconstruction_dir, exist_ok=True)
     reconstruction.write(sparse_reconstruction_dir)
 
-    
-    import pdb; pdb.set_trace()
 
+    import pdb; pdb.set_trace()
     return True
 
 
@@ -259,7 +264,6 @@ def rename_colmap_recons_and_rescale_camera(
             pycamera.params = pred_params
             pycamera.width = real_image_size[0]
             pycamera.height = real_image_size[1]
-
 
         if shift_point2d_to_original_res:
             # Also shift the point2D to original resolution
