@@ -19,6 +19,7 @@ torch.backends.cudnn.deterministic = False
 
 import argparse
 from pathlib import Path
+import trimesh
 import pycolmap
 
 
@@ -62,7 +63,7 @@ def parse_args():
     parser.add_argument('--max_query_pts', type=int, default=2048,
                       help='Maximum number of query points')
     parser.add_argument('--fine_tracking', action='store_true', default=True,
-                      help='Use fine tracking')
+                      help='Use fine tracking (slow but more accurate)')
     return parser.parse_args()
 
 
@@ -210,6 +211,8 @@ def demo_fn(args):
     else:
         conf_thres_value = 5 # hard-coded to 5
         max_points_for_colmap = 100000 # randomly sample 3D points
+        shared_camera = False # in the feedforward manner, we do not support shared camera
+        camera_type = "PINHOLE" # in the feedforward manner, we only support PINHOLE camera
 
         image_size = np.array([vggt_fixed_resolution, vggt_fixed_resolution])        
         num_frames, height, width, _ = points_3d.shape
@@ -229,7 +232,6 @@ def demo_fn(args):
         points_xyf = points_xyf[conf_mask]
         points_rgb = points_rgb[conf_mask]
 
-
         print("Converting to COLMAP format")
         reconstruction = batch_np_matrix_to_pycolmap_wo_track(
             points_3d,
@@ -242,8 +244,8 @@ def demo_fn(args):
             camera_type=camera_type,
         )
         
-        reconstruction_resolution = vggt_fixed_resolution
-        
+        reconstruction_resolution = vggt_fixed_resolution    
+    
     reconstruction = rename_colmap_recons_and_rescale_camera(
         reconstruction,
         base_image_path_list,
@@ -257,6 +259,9 @@ def demo_fn(args):
     sparse_reconstruction_dir = os.path.join(args.scene_dir, "sparse")
     os.makedirs(sparse_reconstruction_dir, exist_ok=True)
     reconstruction.write(sparse_reconstruction_dir)
+
+    # Save point cloud for fast visualization
+    trimesh.PointCloud(points_3d, colors=points_rgb).export(os.path.join(args.scene_dir, "sparse/points.ply"))
 
     return True
 
@@ -339,7 +344,7 @@ Output:
     │   ├── cameras.bin   # Camera parameters (COLMAP format)
     │   ├── images.bin    # Pose for each image (COLMAP format)
     │   ├── points3D.bin  # 3D points (COLMAP format)
-    │   └── points.ply    # Point cloud visualization file TODO 
+    │   └── points.ply    # Point cloud visualization file 
     └── visuals/          # Visualization outputs TODO
 
 Key Features
@@ -347,5 +352,4 @@ Key Features
 • Dual-mode Support: Run reconstructions using either VGGT or VGGT+BA
 • Resolution Preservation: Maintains original image resolution in camera parameters and tracks
 • COLMAP Compatibility: Exports results in standard COLMAP sparse reconstruction format
-• Point Cloud Export: Generates additional PLY file for easy visualization
 """
