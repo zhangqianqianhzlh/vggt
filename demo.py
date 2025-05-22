@@ -100,6 +100,7 @@ def demo_fn(args):
     image_path_list = glob.glob(os.path.join(image_dir, "*"))
     if len(image_path_list) == 0:
         raise ValueError(f"No images found in {image_dir}")
+    base_image_path_list = [os.path.basename(path) for path in image_path_list]
     
     
     # Load images and original coordinates
@@ -209,9 +210,7 @@ def demo_fn(args):
             shared_camera=shared_camera,
             camera_type=camera_type,
         )
-        
-        base_image_path_list = [os.path.basename(path) for path in image_path_list]
-        
+                
         reconstruction = rename_colmap_recons_and_rescale_camera(
             reconstruction,
             base_image_path_list,
