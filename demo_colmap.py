@@ -108,7 +108,6 @@ def demo_fn(args):
     # TODO: also support masks here    
     vggt_fixed_resolution = 518
     img_load_resolution = 1024
-    scale = img_load_resolution /vggt_fixed_resolution
 
     images, original_coords = load_and_preprocess_images_square(image_path_list, img_load_resolution)
     images = images.to(device)
@@ -131,7 +130,8 @@ def demo_fn(args):
         from vggt.dependency.track_predict import predict_tracks
         from vggt.dependency.np_to_pycolmap import batch_np_matrix_to_pycolmap
         image_size = np.array(images.shape[-2:])
-        
+        scale = img_load_resolution /vggt_fixed_resolution
+
         with torch.cuda.amp.autocast(dtype=dtype):
             # Predicting Tracks
             # Using VGGSfM tracker instead of VGGT tracker for efficiency

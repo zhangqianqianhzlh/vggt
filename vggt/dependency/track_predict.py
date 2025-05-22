@@ -175,6 +175,8 @@ def _forward_on_query(
         pred_conf = conf[query_index][query_points_np[:, 1], query_points_np[:, 0]]
         pred_point_3d = points_3d[query_index][query_points_np[:, 1], query_points_np[:, 0]]
 
+        import pdb; pdb.set_trace()
+        
         # heuristic to remove low confidence points
         # should I export this as an input parameter?
         valid_mask = pred_conf > 1.2
