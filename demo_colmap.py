@@ -12,7 +12,7 @@ import copy
 import torch
 import torch.nn.functional as F
 
-# Configure CUDA settings early
+# Configure CUDA settings
 torch.backends.cudnn.enabled = True
 torch.backends.cudnn.benchmark = True
 torch.backends.cudnn.deterministic = False
@@ -63,7 +63,7 @@ def parse_args():
     parser.add_argument('--max_query_pts', type=int, default=2048,
                       help='Maximum number of query points')
     parser.add_argument('--fine_tracking', action='store_true', default=True,
-                      help='Use fine tracking (slow but more accurate)')
+                      help='Use fine tracking (slower but more accurate)')
     return parser.parse_args()
 
 
@@ -152,16 +152,9 @@ def demo_fn(args):
 
     
     if args.use_ba:
-        max_reproj_error = args.max_reproj_error
-        shared_camera = args.shared_camera
-        camera_type = args.camera_type
-        vis_thresh = args.vis_thresh
-        query_frame_num = args.query_frame_num
-        max_query_pts = args.max_query_pts
-        fine_tracking = args.fine_tracking
-        
         image_size = np.array(images.shape[-2:])
         scale = img_load_resolution / vggt_fixed_resolution
+        shared_camera = args.shared_camera
 
         with torch.cuda.amp.autocast(dtype=dtype):
             # Predicting Tracks
@@ -171,33 +164,33 @@ def demo_fn(args):
 
             # You can also change the pred_tracks to tracks from any other methods
             # e.g., from COLMAP, from CoTracker, or by chaining 2D matches from Lightglue/LoFTR.
-            pred_tracks, pred_vis_scores, pred_confs, pred_points_3d, pred_colors = predict_tracks(images, 
+            pred_tracks, pred_vis_scores, pred_confs, points_3d, points_rgb = predict_tracks(images, 
                                                                                     conf=depth_conf, 
                                                                                     points_3d=points_3d,
-                                                                                    masks=None, max_query_pts=max_query_pts, 
-                                                                                    query_frame_num=query_frame_num, 
+                                                                                    masks=None, max_query_pts=args.max_query_pts, 
+                                                                                    query_frame_num=args.query_frame_num, 
                                                                                     keypoint_extractor="aliked+sp", 
-                                                                                    fine_tracking=fine_tracking)
+                                                                                    fine_tracking=args.fine_tracking)
 
             torch.cuda.empty_cache()
     
         # rescale the intrinsic matrix from 518 to 1024
         intrinsic[:, :2, :] *= scale
-        track_mask = (pred_vis_scores > vis_thresh) 
+        track_mask = (pred_vis_scores > args.vis_thresh) 
         
         
         # TODO: radial distortion, iterative BA, masks
         reconstruction, valid_track_mask = batch_np_matrix_to_pycolmap(
-            pred_points_3d,
+            points_3d,
             extrinsic,
             intrinsic,
             pred_tracks,
             image_size,
             masks=track_mask,
-            max_reproj_error=max_reproj_error,
+            max_reproj_error=args.max_reproj_error,
             shared_camera=shared_camera,
-            camera_type=camera_type,
-            points_rgb=pred_colors,
+            camera_type=args.camera_type,
+            points_rgb=points_rgb,
         )
     
         if reconstruction is None:
@@ -208,8 +201,6 @@ def demo_fn(args):
         pycolmap.bundle_adjustment(reconstruction, ba_options)
         
         reconstruction_resolution = img_load_resolution
-        # Save point cloud for fast visualization
-        trimesh.PointCloud(pred_points_3d, colors=pred_colors).export(os.path.join(args.scene_dir, "sparse/points.ply"))
     else:
         conf_thres_value = 5 # hard-coded to 5
         max_points_for_colmap = 100000 # randomly sample 3D points
@@ -247,8 +238,9 @@ def demo_fn(args):
         )
         
         reconstruction_resolution = vggt_fixed_resolution    
-        # Save point cloud for fast visualization
-        trimesh.PointCloud(points_3d, colors=points_rgb).export(os.path.join(args.scene_dir, "sparse/points.ply"))
+        
+    # Save point cloud for fast visualization
+    trimesh.PointCloud(points_3d, colors=points_rgb).export(os.path.join(args.scene_dir, "sparse/points.ply"))
 
     reconstruction = rename_colmap_recons_and_rescale_camera(
         reconstruction,

@@ -5,6 +5,7 @@
 # LICENSE file in the root directory of this source tree.
 
 import torch
+import numpy as np
 from .vggsfm_utils import *
 
 
@@ -33,12 +34,14 @@ def predict_tracks(
     Args:
         images: Tensor of shape [S, 3, H, W] containing the input images.
         conf: Tensor of shape [S, 1, H, W] containing the confidence scores. Default is None.
+        points_3d: Tensor containing 3D points. Default is None.
         masks: Optional tensor of shape [S, 1, H, W] containing masks. Default is None.
         max_query_pts: Maximum number of query points. Default is 2048.
         query_frame_num: Number of query frames to use. Default is 5.
         keypoint_extractor: Method for keypoint extraction. Default is "aliked+sp".
         max_points_num: Maximum number of points to process at once. Default is 163840.
         fine_tracking: Whether to use fine tracking. Default is True.
+        complete_non_vis: Whether to augment non-visible frames. Default is True.
 
     Returns:
         pred_tracks: Numpy array containing the predicted tracks.
@@ -147,9 +150,10 @@ def _forward_on_query(
     Args:
         query_index: Index of the query frame
         images: Tensor of shape [S, 3, H, W] containing the input images
+        conf: Confidence tensor
+        points_3d: 3D points tensor
         fmaps_for_tracker: Feature maps for the tracker
         keypoint_extractors: Initialized feature extractors
-        frame_num: Number of frames
         tracker: VGG-SFM tracker
         max_points_num: Maximum number of points to process at once
         fine_tracking: Whether to use fine tracking
@@ -168,12 +172,10 @@ def _forward_on_query(
     query_points = extract_keypoints(query_image, keypoint_extractors, round_keypoints=False)
     query_points = query_points[:, torch.randperm(query_points.shape[1], device=device)]
 
-    # extract the color at the keypoint locations
+    # Extract the color at the keypoint locations
     query_points_long = query_points.squeeze(0).round().long()
     pred_color = images[query_index][:, query_points_long[:, 1], query_points_long[:, 0]]
-    pred_color = (pred_color.permute(1,0).cpu().numpy() * 255).astype(np.uint8)
-    # 
-
+    pred_color = (pred_color.permute(1, 0).cpu().numpy() * 255).astype(np.uint8)
 
     # Query the confidence and points_3d at the keypoint locations
     if (conf is not None) and (points_3d is not None):
@@ -256,6 +258,8 @@ def _augment_non_visible_frames(
         pred_points_3d: List of numpy arrays containing 3D points.
         pred_colors: List of numpy arrays containing point colors.
         images: Tensor of shape [S, 3, H, W] containing the input images.
+        conf: Tensor of shape [S, 1, H, W] containing confidence scores
+        points_3d: Tensor containing 3D points
         fmaps_for_tracker: Feature maps for the tracker
         keypoint_extractors: Initialized feature extractors
         tracker: VGG-SFM tracker
@@ -264,8 +268,6 @@ def _augment_non_visible_frames(
         min_vis: Minimum visibility threshold
         non_vis_thresh: Non-visibility threshold
         device: Device to use for computation
-        conf: Tensor of shape [S, 1, H, W] containing confidence scores
-        points_3d: Tensor containing 3D points
 
     Returns:
         Updated pred_tracks, pred_vis_scores, pred_confs, pred_points_3d, and pred_colors lists.
@@ -275,7 +277,7 @@ def _augment_non_visible_frames(
     cur_extractors = keypoint_extractors  # may be replaced on the final trial
 
     while True:
-        # --- visibility per frame -----------------------------------------
+        # Visibility per frame
         vis_array = np.concatenate(pred_vis_scores, axis=1)
 
         # Count frames with sufficient visibility using numpy
@@ -287,18 +289,18 @@ def _augment_non_visible_frames(
 
         print("Processing non visible frames:", non_vis_frames)
 
-        # --- decide the frames & extractor for this round -----------------
+        # Decide the frames & extractor for this round
         if non_vis_frames[0] == last_query:
-            # same frame failed twice  ➜  final "all-in" attempt
+            # Same frame failed twice - final "all-in" attempt
             final_trial = True
             cur_extractors = initialize_feature_extractors(2048, extractor_method="sp+sift+aliked", device=device)
             query_frame_list = non_vis_frames  # blast them all at once
         else:
-            query_frame_list = [non_vis_frames[0]]  # tackle one at a time
+            query_frame_list = [non_vis_frames[0]]  # Process one at a time
 
         last_query = non_vis_frames[0]
 
-        # --- run the tracker for every selected frame ---------------------
+        # Run the tracker for every selected frame
         for query_index in query_frame_list:
             new_track, new_vis, new_conf, new_point_3d, new_color = _forward_on_query(
                 query_index,
@@ -319,6 +321,6 @@ def _augment_non_visible_frames(
             pred_colors.append(new_color)
 
         if final_trial:
-            break  # stop after blast round
+            break  # Stop after final attempt
 
     return pred_tracks, pred_vis_scores, pred_confs, pred_points_3d, pred_colors

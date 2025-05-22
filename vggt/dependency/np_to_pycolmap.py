@@ -36,11 +36,7 @@ def batch_np_matrix_to_pycolmap(
     NOTE: different from VGGSfM, this function:
     1. Use np instead of torch
     2. Frame index and camera id starts from 1 rather than 0 (to fit the format of PyCOLMAP)
-    
-    TODO: handle rgb colors?
     """
-
-
     # points3d: Px3
     # extrinsics: Nx3x4
     # intrinsics: Nx3x3

@@ -4,36 +4,46 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
-import torch
-import torch.nn.functional as F
-import numpy as np
-import pycolmap
-from lightglue import ALIKED, SuperPoint, SIFT
-from .vggsfm_tracker import TrackerPredictor
-
-
 import logging
 import warnings
+from typing import Dict, List, Optional, Tuple, Union
 
-# Suppress DINO v2 logs
+import numpy as np
+import pycolmap
+import torch
+import torch.nn.functional as F
+from lightglue import ALIKED, SIFT, SuperPoint
+
+from .vggsfm_tracker import TrackerPredictor
+
+# Suppress verbose logging from dependencies
 logging.getLogger("dinov2").setLevel(logging.WARNING)
 warnings.filterwarnings("ignore", message="xFormers is available")
 warnings.filterwarnings("ignore", message="dinov2")
 
-
-
+# Constants
 _RESNET_MEAN = [0.485, 0.456, 0.406]
 _RESNET_STD = [0.229, 0.224, 0.225]
 
 
 def build_vggsfm_tracker(model_path=None):
+    """
+    Build and initialize the VGGSfM tracker.
+    
+    Args:
+        model_path: Path to the model weights file. If None, weights are downloaded from HuggingFace.
+        
+    Returns:
+        Initialized tracker model in eval mode.
+    """
+    tracker = TrackerPredictor()
+    
     if model_path is None:
         default_url = "https://huggingface.co/facebook/VGGSfM/resolve/main/vggsfm_v2_tracker.pt"
-        tracker = TrackerPredictor()
         tracker.load_state_dict(torch.hub.load_state_dict_from_url(default_url))
     else:
-        tracker = TrackerPredictor()
         tracker.load_state_dict(torch.load(model_path))
+        
     tracker.eval()
     return tracker
 
@@ -55,13 +65,15 @@ def generate_rank_by_dino(
     Returns:
         List of frame indices ranked by their representativeness
     """
-
+    # Resize images to the target size
     images = F.interpolate(images, (image_size, image_size), mode="bilinear", align_corners=False)
 
+    # Load DINO model
     dino_v2_model = torch.hub.load("facebookresearch/dinov2", model_name)
     dino_v2_model.eval()
     dino_v2_model = dino_v2_model.to(device)
 
+    # Normalize images using ResNet normalization
     resnet_mean = torch.tensor(_RESNET_MEAN, device=device).view(1, 3, 1, 1)
     resnet_std = torch.tensor(_RESNET_STD, device=device).view(1, 3, 1, 1)
     images_resnet_norm = (images - resnet_mean) / resnet_std
@@ -69,6 +81,7 @@ def generate_rank_by_dino(
     with torch.no_grad():
         frame_feat = dino_v2_model(images_resnet_norm, is_training=True)
 
+    # Process features based on similarity type
     if spatial_similarity:
         frame_feat = frame_feat["x_norm_patchtokens"]
         frame_feat_norm = F.normalize(frame_feat, p=2, dim=1)
