@@ -194,7 +194,7 @@ def demo_fn(args):
         points_rgb = points_rgb[conf_mask]
 
 
-        batch_np_matrix_to_pycolmap_wo_track(
+        reconstruction = batch_np_matrix_to_pycolmap_wo_track(
             points_3d,
             points_xyf,
             points_rgb,

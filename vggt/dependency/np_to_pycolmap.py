@@ -95,39 +95,7 @@ def batch_np_matrix_to_pycolmap(
     for fidx in range(N):
         # set camera
         if camera is None or (not shared_camera):
-            if camera_type == "PINHOLE":
-                pycolmap_intri = np.array(
-                    [
-                        intrinsics[fidx][0, 0],
-                        intrinsics[fidx][1, 1],
-                        intrinsics[fidx][0, 2],
-                        intrinsics[fidx][1, 2],
-                    ]
-                )
-            elif camera_type == "SIMPLE_PINHOLE":
-                focal = (intrinsics[fidx][0, 0] + intrinsics[fidx][1, 1]) / 2
-                pycolmap_intri = np.array(
-                    [
-                        focal,
-                        intrinsics[fidx][0, 2],
-                        intrinsics[fidx][1, 2],
-                    ]
-                )
-            elif camera_type == "SIMPLE_RADIAL":
-                raise NotImplementedError("SIMPLE_RADIAL is not supported yet")
-                focal = (intrinsics[fidx][0, 0] + intrinsics[fidx][1, 1]) / 2
-                pycolmap_intri = np.array(
-                    [
-                        focal,
-                        intrinsics[fidx][0, 2],
-                        intrinsics[fidx][1, 2],
-                        extra_params[fidx][0],
-                    ]
-                )
-            else:
-                raise ValueError(
-                    f"Camera type {camera_type} is not supported yet"
-                )
+            pycolmap_intri = _build_pycolmap_intri(fidx, intrinsics, camera_type, extra_params)
 
             camera = pycolmap.Camera(
                 model=camera_type,
@@ -252,9 +220,6 @@ def pycolmap_to_batch_np_matrix(
 
 ########################################################
 
-
-
-
 def batch_np_matrix_to_pycolmap_wo_track(
     points3d,
     points_xyf,
@@ -285,7 +250,6 @@ def batch_np_matrix_to_pycolmap_wo_track(
     N = len(extrinsics)
     P = len(points3d)
     
-
     # Reconstruction object, following the format of PyCOLMAP/COLMAP
     reconstruction = pycolmap.Reconstruction()
 
@@ -294,45 +258,12 @@ def batch_np_matrix_to_pycolmap_wo_track(
             points3d[vidx], pycolmap.Track(), points_rgb[vidx]
         )
 
-
     camera = None
     # frame idx
     for fidx in range(N):
         # set camera
         if camera is None or (not shared_camera):
-            if camera_type == "PINHOLE":
-                pycolmap_intri = np.array(
-                    [
-                        intrinsics[fidx][0, 0],
-                        intrinsics[fidx][1, 1],
-                        intrinsics[fidx][0, 2],
-                        intrinsics[fidx][1, 2],
-                    ]
-                )
-            elif camera_type == "SIMPLE_PINHOLE":
-                focal = (intrinsics[fidx][0, 0] + intrinsics[fidx][1, 1]) / 2
-                pycolmap_intri = np.array(
-                    [
-                        focal,
-                        intrinsics[fidx][0, 2],
-                        intrinsics[fidx][1, 2],
-                    ]
-                )
-            elif camera_type == "SIMPLE_RADIAL":
-                raise NotImplementedError("SIMPLE_RADIAL is not supported yet")
-                focal = (intrinsics[fidx][0, 0] + intrinsics[fidx][1, 1]) / 2
-                pycolmap_intri = np.array(
-                    [
-                        focal,
-                        intrinsics[fidx][0, 2],
-                        intrinsics[fidx][1, 2],
-                        extra_params[fidx][0],
-                    ]
-                )
-            else:
-                raise ValueError(
-                    f"Camera type {camera_type} is not supported yet"
-                )
+            pycolmap_intri = _build_pycolmap_intri(fidx, intrinsics, camera_type)
 
             camera = pycolmap.Camera(
                 model=camera_type,
@@ -362,30 +293,19 @@ def batch_np_matrix_to_pycolmap_wo_track(
 
         point2D_idx = 0
         
-        # NOTE point3D_id start by 1
-        for point3D_id in range(1, num_points3D + 1):
-
-
-            import pdb; pdb.set_trace()
-
-            original_track_idx = valid_idx[point3D_id - 1]
-
-            if (
-                reconstruction.points3D[point3D_id].xyz < max_points3D_val
-            ).all():
-                if masks[fidx][original_track_idx]:
-                    # It seems we don't need +0.5 for BA
-                    point2D_xy = tracks[fidx][original_track_idx]
-                    # Please note when adding the Point2D object
-                    # It not only requires the 2D xy location, but also the id to 3D point
-                    points2D_list.append(
-                        pycolmap.Point2D(point2D_xy, point3D_id)
-                    )
-
-                    # add element
-                    track = reconstruction.points3D[point3D_id].track
-                    track.add_element(fidx + 1, point2D_idx)
-                    point2D_idx += 1
+        points_belong_to_fidx = points_xyf[:, 2].astype(np.int32) == fidx
+        points_belong_to_fidx = np.nonzero(points_belong_to_fidx)[0]
+        
+        for point3D_batch_idx in points_belong_to_fidx:
+            point3D_id = point3D_batch_idx + 1
+            point2D_xyf = points_xyf[point3D_batch_idx]
+            point2D_xy = point2D_xyf[:2]
+            points2D_list.append(pycolmap.Point2D(point2D_xy, point3D_id))
+            
+            # add element
+            track = reconstruction.points3D[point3D_id].track
+            track.add_element(fidx + 1, point2D_idx)
+            point2D_idx += 1
 
         assert point2D_idx == len(points2D_list)
 
@@ -393,11 +313,64 @@ def batch_np_matrix_to_pycolmap_wo_track(
             image.points2D = pycolmap.ListPoint2D(points2D_list)
             image.registered = True
         except:
-            print(f"frame {fidx + 1} is out of BA")
+            print(f"frame {fidx + 1} does not have any points")
             image.registered = False
 
         # add image
         reconstruction.add_image(image)
 
-    return reconstruction, valid_mask
+    return reconstruction
+
+
+
+
+
+def _build_pycolmap_intri(fidx, intrinsics, camera_type, extra_params=None):
+    """
+    Helper function to get camera parameters based on camera type.
+    
+    Args:
+        fidx: Frame index
+        intrinsics: Camera intrinsic parameters 
+        camera_type: Type of camera model
+        extra_params: Additional parameters for certain camera types
+        
+    Returns:
+        pycolmap_intri: NumPy array of camera parameters
+    """
+    if camera_type == "PINHOLE":
+        pycolmap_intri = np.array(
+            [
+                intrinsics[fidx][0, 0],
+                intrinsics[fidx][1, 1],
+                intrinsics[fidx][0, 2],
+                intrinsics[fidx][1, 2],
+            ]
+        )
+    elif camera_type == "SIMPLE_PINHOLE":
+        focal = (intrinsics[fidx][0, 0] + intrinsics[fidx][1, 1]) / 2
+        pycolmap_intri = np.array(
+            [
+                focal,
+                intrinsics[fidx][0, 2],
+                intrinsics[fidx][1, 2],
+            ]
+        )
+    elif camera_type == "SIMPLE_RADIAL":
+        raise NotImplementedError("SIMPLE_RADIAL is not supported yet")
+        focal = (intrinsics[fidx][0, 0] + intrinsics[fidx][1, 1]) / 2
+        pycolmap_intri = np.array(
+            [
+                focal,
+                intrinsics[fidx][0, 2],
+                intrinsics[fidx][1, 2],
+                extra_params[fidx][0],
+            ]
+        )
+    else:
+        raise ValueError(
+            f"Camera type {camera_type} is not supported yet"
+        )
+    
+    return pycolmap_intri
 
