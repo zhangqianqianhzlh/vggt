@@ -162,6 +162,13 @@ def _forward_on_query(
     query_points = extract_keypoints(query_image, keypoint_extractors, round_keypoints=False)
     query_points = query_points[:, torch.randperm(query_points.shape[1], device=device)]
 
+    # extract the color at the keypoint locations
+    query_points_long = query_points.squeeze(0).round().long()
+    pred_color = images[query_index][:, query_points_long[:, 1], query_points_long[:, 0]]
+    pred_color = (pred_color.permute(1,0).cpu().numpy() * 255).astype(np.uint8)
+    # 
+
+
     # Query the confidence and points_3d at the keypoint locations
     if (conf is not None) and (points_3d is not None):
         assert height == width
@@ -170,12 +177,10 @@ def _forward_on_query(
         scale = conf.shape[-1] / width
 
         query_points_scaled = (query_points.squeeze(0) * scale).round().long()
-        query_points_np = query_points_scaled.cpu().numpy()
+        query_points_scaled = query_points_scaled.cpu().numpy()
 
-        pred_conf = conf[query_index][query_points_np[:, 1], query_points_np[:, 0]]
-        pred_point_3d = points_3d[query_index][query_points_np[:, 1], query_points_np[:, 0]]
-
-        import pdb; pdb.set_trace()
+        pred_conf = conf[query_index][query_points_scaled[:, 1], query_points_scaled[:, 0]]
+        pred_point_3d = points_3d[query_index][query_points_scaled[:, 1], query_points_scaled[:, 0]]
         
         # heuristic to remove low confidence points
         # should I export this as an input parameter?
@@ -189,7 +194,6 @@ def _forward_on_query(
         pred_point_3d = None
 
     reorder_index = calculate_index_mappings(query_index, frame_num, device=device)
-    reorder_images = switch_tensor_order([images], reorder_index, dim=0)[0]
 
     images_feed, fmaps_feed = switch_tensor_order([images, fmaps_for_tracker], reorder_index, dim=0)
     images_feed = images_feed[None]  # add batch dimension
@@ -213,6 +217,7 @@ def _forward_on_query(
     pred_track = pred_track.squeeze(0).float().cpu().numpy()
     pred_vis = pred_vis.squeeze(0).float().cpu().numpy()
 
+    import pdb; pdb.set_trace()
     return pred_track, pred_vis, pred_conf, pred_point_3d
 
 
