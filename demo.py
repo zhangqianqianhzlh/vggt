@@ -209,7 +209,7 @@ def demo_fn(args):
         reconstruction = rename_colmap_recons_and_rescale_camera(
             reconstruction,
             image_path_list,
-            original_coords,
+            original_coords.cpu().numpy(),
             img_size=vggt_fixed_resolution,
             shift_point2d_to_original_res=True,
             shared_camera=shared_camera,
@@ -225,40 +225,6 @@ def demo_fn(args):
     
     import pdb; pdb.set_trace()
 
-
-
-
-            # Step 2: Filter out tracks based on visibility scores and depth confidence
-            # Step 3: 
-    
-    # from vggt.dependency.track_predict import predict_track, build_vggsfm_tracker
-    # from vggt.dependency.vggsfm_tracker import TrackerPredictor
-    # tracker = TrackerPredictor()
-    # 
-    # tracker.load_state_dict(torch.hub.load_state_dict_from_url("https://huggingface.co/facebook/VGGSfM/resolve/main/vggsfm_v2_tracker.pt"))
-
-
-    # torchvision.utils.save_image(images[:,:, 85:431, 0:518], "images.png")
-
-    sequence_list = test_dataset.sequence_list
-    seq_name = sequence_list[0]  # Run on one Scene
-
-    batch, image_paths = test_dataset.get_data(
-        sequence_name=seq_name, return_path=True
-    )
-
-    output_dir = batch["scene_dir"]
-
-    images = batch["image"]
-    masks = batch["masks"] if batch["masks"] is not None else None
-    crop_params = batch["crop_params"] if batch["crop_params"] is not None else None
-    original_images = batch["original_images"]
-
-    # QQ:
-    # Do I want to implement a new runner for vggt?
-    # probably not, I hope to keep it as simple as possible
-
-    print("Demo Finished Successfully")
     return True
 
 
@@ -284,23 +250,21 @@ def rename_colmap_recons_and_rescale_camera(
             # Rescale the camera parameters
             pred_params = copy.deepcopy(pycamera.params)
             
-            # real_size_max_dim = original_coords[pyimageid - 1, -1]
-            import pdb; pdb.set_trace()
-            resize_ratio = real_size_max_dim / img_size
-            real_focal = resize_ratio * pred_params[0]
-            real_pp = real_image_size.cpu().numpy() // 2
+            real_image_size = original_coords[pyimageid - 1, -2:]
+            resize_ratio = max(real_image_size) / img_size
+            pred_params = pred_params * resize_ratio
+            real_pp = real_image_size / 2
+            pred_params[-2:] = real_pp # center of the image
 
-            pred_params[0] = real_focal
-            pred_params[1:3] = real_pp
             pycamera.params = pred_params
             pycamera.width = real_image_size[0]
             pycamera.height = real_image_size[1]
 
-            resize_ratio = resize_ratio.item()
 
         if shift_point2d_to_original_res:
             # Also shift the point2D to original resolution
-            top_left = crop_params[0, pyimageid][-4:-2].abs().cpu().numpy()
+            top_left = original_coords[pyimageid - 1, :2]
+
             for point2D in pyimage.points2D:
                 point2D.xy = (point2D.xy - top_left) * resize_ratio
 
