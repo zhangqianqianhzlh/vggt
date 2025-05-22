@@ -19,18 +19,17 @@ torch.backends.cudnn.deterministic = False
 
 import argparse
 from pathlib import Path
+import pycolmap
+
 
 from vggt.models.vggt import VGGT
 from vggt.utils.load_fn import load_and_preprocess_images_square
 from vggt.utils.pose_enc import pose_encoding_to_extri_intri
 from vggt.utils.geometry import unproject_depth_map_to_point_map
 from vggt.utils.helper import create_pixel_coordinate_grid, randomly_limit_trues
-
-
-import pycolmap
 from vggt.dependency.track_predict import predict_tracks
-from vggt.dependency.np_to_pycolmap import batch_np_matrix_to_pycolmap
-from vggt.dependency.np_to_pycolmap import batch_np_matrix_to_pycolmap_wo_track
+from vggt.dependency.np_to_pycolmap import batch_np_matrix_to_pycolmap, batch_np_matrix_to_pycolmap_wo_track
+
 
 
 # TODO: add support for masks
@@ -169,15 +168,15 @@ def demo_fn(args):
             # VGGT tracker requires multiple backbone runs to query different frames (this is a problem caused by the training process)
             # Will be fixed in VGGT v2
 
-            # You can also change the pred_tracks to any tracks from other trackers
+            # You can also change the pred_tracks to tracks from any other methods
             # e.g., from COLMAP, from CoTracker, or by chaining 2D matches from Lightglue/LoFTR.
-            pred_tracks, pred_vis_scores, pred_confs, pred_points_3d, pred_colors = predict_tracks(images, conf=depth_conf, 
-                                                                      points_3d=points_3d,
-                                                                      masks=None, max_query_pts=max_query_pts, 
-                                                                      query_frame_num=query_frame_num, 
-                                                                      keypoint_extractor="aliked+sp", 
-                                                                      max_points_num=max_points_num, 
-                                                                      fine_tracking=fine_tracking)
+            pred_tracks, pred_vis_scores, pred_confs, pred_points_3d, pred_colors = predict_tracks(images, 
+                                                                                    conf=depth_conf, 
+                                                                                    points_3d=points_3d,
+                                                                                    masks=None, max_query_pts=max_query_pts, 
+                                                                                    query_frame_num=query_frame_num, 
+                                                                                    keypoint_extractor="aliked+sp", 
+                                                                                    fine_tracking=fine_tracking)
 
             torch.cuda.empty_cache()
     
@@ -202,7 +201,8 @@ def demo_fn(args):
     
         if reconstruction is None:
             raise ValueError("No reconstruction can be built with BA")
-            
+        
+        # Bundle Adjustment
         ba_options = pycolmap.BundleAdjustmentOptions()
         pycolmap.bundle_adjustment(reconstruction, ba_options)
         
@@ -222,6 +222,7 @@ def demo_fn(args):
         points_xyf = create_pixel_coordinate_grid(num_frames, height, width)
         
         conf_mask = (depth_conf >= conf_thres_value)
+        # at most writing 100000 3d points to colmap reconstruction object
         conf_mask = randomly_limit_trues(conf_mask, max_points_for_colmap)
 
         points_3d = points_3d[conf_mask]
@@ -242,7 +243,6 @@ def demo_fn(args):
         )
         
         reconstruction_resolution = vggt_fixed_resolution
-        
         
     reconstruction = rename_colmap_recons_and_rescale_camera(
         reconstruction,
@@ -318,7 +318,7 @@ if __name__ == "__main__":
         
         
         
-# WIP
+# Work in Progress (WIP)
 
 """
 VGGT Runner Script
