@@ -204,9 +204,17 @@ def demo_fn(args):
             shared_camera=shared_camera,
             camera_type=camera_type,
         )
-        import pdb; pdb.set_trace()
         
-
+        reconstruction = rename_colmap_recons_and_rescale_camera(
+            reconstruction,
+            image_path_list,
+            original_coords,
+            img_size=vggt_fixed_resolution,
+            shift_point2d_to_original_res=True,
+            shared_camera=shared_camera,
+        )
+        
+        
 
 
     sparse_reconstruction_dir = os.path.join(args.scene_dir, "sparse")
@@ -251,6 +259,57 @@ def demo_fn(args):
 
     print("Demo Finished Successfully")
     return True
+
+
+
+def rename_colmap_recons_and_rescale_camera(
+    reconstruction,
+    image_paths,
+    original_coords,
+    img_size,
+    shift_point2d_to_original_res=False,
+    shared_camera=False,
+):
+    rescale_camera = True
+
+    for pyimageid in reconstruction.images:
+        # Reshaped the padded&resized image to the original size
+        # Rename the images to the original names
+        
+        import pdb;pdb.set_trace()
+        pyimage = reconstruction.images[pyimageid]
+        pycamera = reconstruction.cameras[pyimage.camera_id]
+        pyimage.name = image_paths[pyimageid]
+
+        if rescale_camera:
+            # Rescale the camera parameters
+            pred_params = copy.deepcopy(pycamera.params)
+            real_image_size = crop_params[0, pyimageid][:2]
+            resize_ratio = real_image_size.max() / img_size
+            real_focal = resize_ratio * pred_params[0]
+            real_pp = real_image_size.cpu().numpy() // 2
+
+            pred_params[0] = real_focal
+            pred_params[1:3] = real_pp
+            pycamera.params = pred_params
+            pycamera.width = real_image_size[0]
+            pycamera.height = real_image_size[1]
+
+            resize_ratio = resize_ratio.item()
+
+        if shift_point2d_to_original_res:
+            # Also shift the point2D to original resolution
+            top_left = crop_params[0, pyimageid][-4:-2].abs().cpu().numpy()
+            for point2D in pyimage.points2D:
+                point2D.xy = (point2D.xy - top_left) * resize_ratio
+
+        if shared_camera:
+            # If shared_camera, all images share the same camera
+            # no need to rescale any more
+            rescale_camera = False
+
+    return reconstruction
+
 
 if __name__ == "__main__":
     args = parse_args()
