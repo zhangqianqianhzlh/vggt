@@ -45,6 +45,7 @@ def predict_tracks(
         pred_vis_scores: Numpy array containing the visibility scores for the tracks.
         pred_confs: Numpy array containing the confidence scores for the tracks.
         pred_points_3d: Numpy array containing the 3D points for the tracks.
+        pred_colors: Numpy array containing the point colors for the tracks. (0, 255)
     """
 
     device = images.device
@@ -68,6 +69,7 @@ def predict_tracks(
     pred_vis_scores = []
     pred_confs = []
     pred_points_3d = []
+    pred_colors = []
 
     fmaps_for_tracker = tracker.process_images_to_fmaps(images)
 
@@ -76,7 +78,7 @@ def predict_tracks(
 
     for query_index in query_frame_indexes:
         print(f"Predicting tracks for query frame {query_index}")
-        pred_track, pred_vis, pred_conf, pred_point_3d = _forward_on_query(
+        pred_track, pred_vis, pred_conf, pred_point_3d, pred_color = _forward_on_query(
             query_index,
             images,
             conf,
@@ -93,13 +95,15 @@ def predict_tracks(
         pred_vis_scores.append(pred_vis)
         pred_confs.append(pred_conf)
         pred_points_3d.append(pred_point_3d)
+        pred_colors.append(pred_color)
 
     if complete_non_vis:
-        pred_tracks, pred_vis_scores, pred_confs, pred_points_3d = _augment_non_visible_frames(
+        pred_tracks, pred_vis_scores, pred_confs, pred_points_3d, pred_colors = _augment_non_visible_frames(
             pred_tracks,
             pred_vis_scores,
             pred_confs,
             pred_points_3d,
+            pred_colors,
             images,
             conf,
             points_3d,
@@ -117,11 +121,12 @@ def predict_tracks(
     pred_vis_scores = np.concatenate(pred_vis_scores, axis=1)
     pred_confs = np.concatenate(pred_confs, axis=0) if pred_confs else None
     pred_points_3d = np.concatenate(pred_points_3d, axis=0) if pred_points_3d else None
+    pred_colors = np.concatenate(pred_colors, axis=0) if pred_colors else None
 
     # from vggt.utils.visual_track import visualize_tracks_on_images
     # visualize_tracks_on_images(images[None], torch.from_numpy(pred_tracks[None]), torch.from_numpy(pred_vis_scores[None])>0.2, out_dir="track_visuals")
 
-    return pred_tracks, pred_vis_scores, pred_confs, pred_points_3d
+    return pred_tracks, pred_vis_scores, pred_confs, pred_points_3d, pred_colors
 
 
 def _forward_on_query(
@@ -155,6 +160,7 @@ def _forward_on_query(
         pred_vis: Visibility scores for the tracks
         pred_conf: Confidence scores for the tracks
         pred_point_3d: 3D points for the tracks
+        pred_color: Point colors for the tracks (0, 255)
     """
     frame_num, _, height, width = images.shape
 
@@ -189,6 +195,7 @@ def _forward_on_query(
             query_points = query_points[:, valid_mask]  # Make sure shape is compatible
             pred_conf = pred_conf[valid_mask]
             pred_point_3d = pred_point_3d[valid_mask]
+            pred_color = pred_color[valid_mask]
     else:
         pred_conf = None
         pred_point_3d = None
@@ -217,8 +224,7 @@ def _forward_on_query(
     pred_track = pred_track.squeeze(0).float().cpu().numpy()
     pred_vis = pred_vis.squeeze(0).float().cpu().numpy()
 
-    import pdb; pdb.set_trace()
-    return pred_track, pred_vis, pred_conf, pred_point_3d
+    return pred_track, pred_vis, pred_conf, pred_point_3d, pred_color
 
 
 def _augment_non_visible_frames(
@@ -226,6 +232,7 @@ def _augment_non_visible_frames(
     pred_vis_scores: list,  # ← running list of np.ndarrays
     pred_confs: list,  # ← running list of np.ndarrays for confidence scores
     pred_points_3d: list,  # ← running list of np.ndarrays for 3D points
+    pred_colors: list,  # ← running list of np.ndarrays for colors
     images: torch.Tensor,
     conf,
     points_3d,
@@ -247,6 +254,7 @@ def _augment_non_visible_frames(
         pred_vis_scores: List of numpy arrays containing visibility scores.
         pred_confs: List of numpy arrays containing confidence scores.
         pred_points_3d: List of numpy arrays containing 3D points.
+        pred_colors: List of numpy arrays containing point colors.
         images: Tensor of shape [S, 3, H, W] containing the input images.
         fmaps_for_tracker: Feature maps for the tracker
         keypoint_extractors: Initialized feature extractors
@@ -260,7 +268,7 @@ def _augment_non_visible_frames(
         points_3d: Tensor containing 3D points
 
     Returns:
-        Updated pred_tracks, pred_vis_scores, pred_confs, and pred_points_3d lists.
+        Updated pred_tracks, pred_vis_scores, pred_confs, pred_points_3d, and pred_colors lists.
     """
     last_query = -1
     final_trial = False
@@ -292,7 +300,7 @@ def _augment_non_visible_frames(
 
         # --- run the tracker for every selected frame ---------------------
         for query_index in query_frame_list:
-            new_track, new_vis, new_conf, new_point_3d = _forward_on_query(
+            new_track, new_vis, new_conf, new_point_3d, new_color = _forward_on_query(
                 query_index,
                 images,
                 conf,
@@ -308,8 +316,9 @@ def _augment_non_visible_frames(
             pred_vis_scores.append(new_vis)
             pred_confs.append(new_conf)
             pred_points_3d.append(new_point_3d)
+            pred_colors.append(new_color)
 
         if final_trial:
             break  # stop after blast round
 
-    return pred_tracks, pred_vis_scores, pred_confs, pred_points_3d
+    return pred_tracks, pred_vis_scores, pred_confs, pred_points_3d, pred_colors
