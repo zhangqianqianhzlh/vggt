@@ -284,9 +284,9 @@ def rename_colmap_recons_and_rescale_camera(
             # Rescale the camera parameters
             pred_params = copy.deepcopy(pycamera.params)
             
+            # real_size_max_dim = original_coords[pyimageid - 1, -1]
             import pdb; pdb.set_trace()
-            real_image_size = crop_params[0, pyimageid][:2]
-            resize_ratio = real_image_size.max() / img_size
+            resize_ratio = real_size_max_dim / img_size
             real_focal = resize_ratio * pred_params[0]
             real_pp = real_image_size.cpu().numpy() // 2
 
