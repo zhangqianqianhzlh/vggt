@@ -26,6 +26,21 @@ from vggt.utils.pose_enc import pose_encoding_to_extri_intri
 from vggt.utils.geometry import unproject_depth_map_to_point_map
 from vggt.utils.helper import create_pixel_coordinate_grid, randomly_limit_trues
 
+
+import pycolmap
+from vggt.dependency.track_predict import predict_tracks
+from vggt.dependency.np_to_pycolmap import batch_np_matrix_to_pycolmap
+from vggt.dependency.np_to_pycolmap import batch_np_matrix_to_pycolmap_wo_track
+
+
+# TODO: add support for masks
+# TODO: add iterative BA
+# TODO: add support for radial distortion, which needs extra_params
+# TODO: test with more cases
+# TODO: test different camera types
+
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description='VGGT Demo')
     parser.add_argument('--scene_dir', type=str, required=True,
@@ -34,6 +49,21 @@ def parse_args():
                       help='Random seed for reproducibility')
     parser.add_argument('--use_ba', action='store_true', default=False,
                       help='Use BA for reconstruction')
+    ######### BA parameters #########
+    parser.add_argument('--max_reproj_error', type=float, default=8.0,
+                      help='Maximum reprojection error for reconstruction')
+    parser.add_argument('--shared_camera', action='store_true', default=False,
+                      help='Use shared camera for all images')
+    parser.add_argument('--camera_type', type=str, default="SIMPLE_PINHOLE",
+                      help='Camera type for reconstruction')
+    parser.add_argument('--vis_thresh', type=float, default=0.2,
+                      help='Visibility threshold for tracks')
+    parser.add_argument('--query_frame_num', type=int, default=5,
+                      help='Number of frames to query')
+    parser.add_argument('--max_query_pts', type=int, default=2048,
+                      help='Maximum number of query points')
+    parser.add_argument('--fine_tracking', action='store_true', default=True,
+                      help='Use fine tracking')
     return parser.parse_args()
 
 
@@ -43,7 +73,7 @@ def run_VGGT(model, images, dtype, resolution=518):
     assert len(images.shape) == 4
     assert images.shape[1] == 3
     
-    # hard-coded to use 518
+    # hard-coded to use 518 for VGGT
     images = F.interpolate(images, size=(resolution, resolution), mode="bilinear", align_corners=False)
     
     with torch.no_grad():
@@ -105,7 +135,6 @@ def demo_fn(args):
     
     # Load images and original coordinates
     # Load Image in 1024, while running VGGT with 518
-    # TODO: also support masks here    
     vggt_fixed_resolution = 518
     img_load_resolution = 1024
 
@@ -121,16 +150,18 @@ def demo_fn(args):
     points_3d = unproject_depth_map_to_point_map(depth_map, extrinsic, intrinsic)
 
 
-    max_reproj_error = 8.0
-    shared_camera = True
-    camera_type = "SIMPLE_PINHOLE"
     
     if args.use_ba:
-        import pycolmap
-        from vggt.dependency.track_predict import predict_tracks
-        from vggt.dependency.np_to_pycolmap import batch_np_matrix_to_pycolmap
+        max_reproj_error = args.max_reproj_error
+        shared_camera = args.shared_camera
+        camera_type = args.camera_type
+        vis_thresh = args.vis_thresh
+        query_frame_num = args.query_frame_num
+        max_query_pts = args.max_query_pts
+        fine_tracking = args.fine_tracking
+        
         image_size = np.array(images.shape[-2:])
-        scale = img_load_resolution /vggt_fixed_resolution
+        scale = img_load_resolution / vggt_fixed_resolution
 
         with torch.cuda.amp.autocast(dtype=dtype):
             # Predicting Tracks
@@ -142,24 +173,20 @@ def demo_fn(args):
             # e.g., from COLMAP, from CoTracker, or by chaining 2D matches from Lightglue/LoFTR.
             pred_tracks, pred_vis_scores, pred_confs, pred_points_3d, pred_colors = predict_tracks(images, conf=depth_conf, 
                                                                       points_3d=points_3d,
-                                                                      masks=None, max_query_pts=2048, 
-                                                                      query_frame_num=5, 
+                                                                      masks=None, max_query_pts=max_query_pts, 
+                                                                      query_frame_num=query_frame_num, 
                                                                       keypoint_extractor="aliked+sp", 
-                                                                      max_points_num=163840, fine_tracking=True)
-            import pdb; pdb.set_trace()
+                                                                      max_points_num=max_points_num, 
+                                                                      fine_tracking=fine_tracking)
+
             torch.cuda.empty_cache()
     
         # rescale the intrinsic matrix from 518 to 1024
         intrinsic[:, :2, :] *= scale
+        track_mask = (pred_vis_scores > vis_thresh) 
         
-        track_mask = (pred_vis_scores > 0.2) 
         
-        
-        # TODO: add support for radial distortion, which needs extra_params
-        
-        # TODO: iterate BA
-        # TODO: add point cloud color
-        
+        # TODO: radial distortion, iterative BA, masks
         reconstruction, valid_track_mask = batch_np_matrix_to_pycolmap(
             pred_points_3d,
             extrinsic,
@@ -170,21 +197,23 @@ def demo_fn(args):
             max_reproj_error=max_reproj_error,
             shared_camera=shared_camera,
             camera_type=camera_type,
+            points_rgb=pred_colors,
         )
+    
+        if reconstruction is None:
+            raise ValueError("No reconstruction can be built with BA")
+            
         ba_options = pycolmap.BundleAdjustmentOptions()
         pycolmap.bundle_adjustment(reconstruction, ba_options)
-
-        # filtered_points_3d, pred_extrinsic, pred_intrinsic, _ = pycolmap_to_batch_np_matrix(reconstruction, device=device, camera_type=camera_type )
+        
+        reconstruction_resolution = img_load_resolution
     else:
         conf_thres_value = 5 # hard-coded to 5
-        max_points_for_colmap = 100000
-        # 
-        from vggt.dependency.np_to_pycolmap import batch_np_matrix_to_pycolmap_wo_track
+        max_points_for_colmap = 100000 # randomly sample 3D points
 
         image_size = np.array([vggt_fixed_resolution, vggt_fixed_resolution])        
         num_frames, height, width, _ = points_3d.shape
-        # get the points, 2D positions, frame index, and rgb colors
-        # points_3d SxHxWx3, numpy array
+
         points_rgb =  F.interpolate(images, size=(vggt_fixed_resolution, vggt_fixed_resolution), mode="bilinear", align_corners=False)
         points_rgb = (points_rgb.cpu().numpy() * 255).astype(np.uint8)
         points_rgb = points_rgb.transpose(0, 2, 3, 1)
@@ -211,25 +240,24 @@ def demo_fn(args):
             shared_camera=shared_camera,
             camera_type=camera_type,
         )
-                
-        reconstruction = rename_colmap_recons_and_rescale_camera(
-            reconstruction,
-            base_image_path_list,
-            original_coords.cpu().numpy(),
-            img_size=vggt_fixed_resolution,
-            shift_point2d_to_original_res=True,
-            shared_camera=shared_camera,
-        )
+        
+        reconstruction_resolution = vggt_fixed_resolution
         
         
-
+    reconstruction = rename_colmap_recons_and_rescale_camera(
+        reconstruction,
+        base_image_path_list,
+        original_coords.cpu().numpy(),
+        img_size=reconstruction_resolution,
+        shift_point2d_to_original_res=True,
+        shared_camera=shared_camera,
+    )
+        
     print(f"Saving reconstruction to {args.scene_dir}/sparse")
     sparse_reconstruction_dir = os.path.join(args.scene_dir, "sparse")
     os.makedirs(sparse_reconstruction_dir, exist_ok=True)
     reconstruction.write(sparse_reconstruction_dir)
 
-
-    import pdb; pdb.set_trace()
     return True
 
 
@@ -290,7 +318,7 @@ if __name__ == "__main__":
         
         
         
-# DO NOT TOUCH THE STUFFS BELOW
+# WIP
 
 """
 VGGT Runner Script
@@ -311,8 +339,8 @@ Output:
     │   ├── cameras.bin   # Camera parameters (COLMAP format)
     │   ├── images.bin    # Pose for each image (COLMAP format)
     │   ├── points3D.bin  # 3D points (COLMAP format)
-    │   └── points.ply    # Point cloud visualization file
-    └── visuals/          # Visualization outputs
+    │   └── points.ply    # Point cloud visualization file TODO 
+    └── visuals/          # Visualization outputs TODO
 
 Key Features
 -----------
@@ -321,22 +349,3 @@ Key Features
 • COLMAP Compatibility: Exports results in standard COLMAP sparse reconstruction format
 • Point Cloud Export: Generates additional PLY file for easy visualization
 """
-
-# Plans
-# This should be a script that runs the model given an input folder
-# The folder should follow the structure of vggsfm, with a images folder inside, e.g., case1/images, case2/images, etc.
-# The script can support vggt and vggt+BA 
-# The script should save the reconstruction results (pose, point, track) under "/sparse" folder under the case folder, e.g., case1/sparse
-# The results should be saved in the format of colmap sparse reconstruction results. Additionaly, saving the point cloud as a separate ply file.
-# The returned cameras and tracks should stay in the original resolution of the images.
-# Also provide an instruction about how to run a gaussian/nerf over the returned results. (option: nerfstudio?)
-# Support the visualization as in VGGSfM? (Optional)
-# (Remind myself: for vggt+BA, it is better to use the tracker from VGGSfM, as its tracker head can support query at any frame with only one run)
-# (but need to fix this problem in vggt tracker head in the future)
-# This should also be able to handle masks
-
-
-
-
-
-
