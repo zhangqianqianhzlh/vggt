@@ -104,7 +104,6 @@ def generate_rank_by_dino(
     # Find the most common frame
     most_common_frame_index = torch.argmax(similarity_sum).item()
 
-    import pdb; pdb.set_trace()
     # Conduct FPS sampling starting from the most common frame
     fps_idx = farthest_point_sampling(distance_matrix, query_frame_num, most_common_frame_index)
 
@@ -150,33 +149,6 @@ def farthest_point_sampling(distance_matrix, num_samples, most_common_frame_inde
 
     return selected_indices
 
-
-def fps(distance_matrix: torch.Tensor,
-        num_samples: int,
-        first: int = 0):
-    """
-    Proper farthest-point sampling.
-    """
-    D = distance_matrix.clamp(min=0)
-    N = D.size(0)
-    if num_samples > N:
-        raise ValueError("num_samples > N")
-
-    selected = torch.empty(num_samples, dtype=torch.long, device=D.device)
-    selected[0] = first
-
-    # distance from every point to the selected set (initially just 'first')
-    min_dist = D[first].clone()
-
-    for k in range(1, num_samples):
-        # mask already-selected so they never win
-        min_dist[selected[:k]] = -1.0
-        idx = torch.argmax(min_dist)
-        selected[k] = idx
-        # update the running min-distance vector
-        min_dist = torch.minimum(min_dist, D[idx])
-
-    return selected.tolist()
 
 
 def calculate_index_mappings(query_index, S, device=None):
