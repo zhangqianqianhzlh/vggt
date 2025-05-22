@@ -208,6 +208,8 @@ def demo_fn(args):
         pycolmap.bundle_adjustment(reconstruction, ba_options)
         
         reconstruction_resolution = img_load_resolution
+        # Save point cloud for fast visualization
+        trimesh.PointCloud(pred_points_3d, colors=pred_colors).export(os.path.join(args.scene_dir, "sparse/points.ply"))
     else:
         conf_thres_value = 5 # hard-coded to 5
         max_points_for_colmap = 100000 # randomly sample 3D points
@@ -245,7 +247,9 @@ def demo_fn(args):
         )
         
         reconstruction_resolution = vggt_fixed_resolution    
-    
+        # Save point cloud for fast visualization
+        trimesh.PointCloud(points_3d, colors=points_rgb).export(os.path.join(args.scene_dir, "sparse/points.ply"))
+
     reconstruction = rename_colmap_recons_and_rescale_camera(
         reconstruction,
         base_image_path_list,
@@ -259,10 +263,7 @@ def demo_fn(args):
     sparse_reconstruction_dir = os.path.join(args.scene_dir, "sparse")
     os.makedirs(sparse_reconstruction_dir, exist_ok=True)
     reconstruction.write(sparse_reconstruction_dir)
-
-    # Save point cloud for fast visualization
-    trimesh.PointCloud(points_3d, colors=points_rgb).export(os.path.join(args.scene_dir, "sparse/points.ply"))
-
+    
     return True
 
 
