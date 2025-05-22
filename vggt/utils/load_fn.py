@@ -22,7 +22,7 @@ def load_and_preprocess_images_square(image_path_list, target_size=1024):
     Returns:
         tuple: (
             torch.Tensor: Batched tensor of preprocessed images with shape (N, 3, target_size, target_size),
-            torch.Tensor: Array of shape (N, 5) containing [x1, y1, x2, y2, scale] for each image
+            torch.Tensor: Array of shape (N, 5) containing [x1, y1, x2, y2, max_dim] for each image
         )
 
     Raises:
@@ -68,7 +68,7 @@ def load_and_preprocess_images_square(image_path_list, target_size=1024):
         y2 = (top + height) * scale
 
         # Store original image coordinates and scale
-        original_coords.append(np.array([x1, y1, x2, y2, scale]))
+        original_coords.append(np.array([x1, y1, x2, y2, max_dim]))
 
         # Create a new black square image and paste original
         square_img = Image.new("RGB", (max_dim, max_dim), (0, 0, 0))

@@ -8,6 +8,7 @@ import random
 import numpy as np
 import glob
 import os
+import copy
 import torch
 import torch.nn.functional as F
 
@@ -275,15 +276,15 @@ def rename_colmap_recons_and_rescale_camera(
     for pyimageid in reconstruction.images:
         # Reshaped the padded&resized image to the original size
         # Rename the images to the original names
-        
-        import pdb;pdb.set_trace()
         pyimage = reconstruction.images[pyimageid]
         pycamera = reconstruction.cameras[pyimage.camera_id]
-        pyimage.name = image_paths[pyimageid]
+        pyimage.name = image_paths[pyimageid - 1]
 
         if rescale_camera:
             # Rescale the camera parameters
             pred_params = copy.deepcopy(pycamera.params)
+            
+            import pdb; pdb.set_trace()
             real_image_size = crop_params[0, pyimageid][:2]
             resize_ratio = real_image_size.max() / img_size
             real_focal = resize_ratio * pred_params[0]
