@@ -8,7 +8,8 @@ import torch
 from PIL import Image
 from torchvision import transforms as TF
 import numpy as np
-
+import io
+import base64
 
 def load_and_preprocess_images_square(image_path_list, target_size=1024):
     """
@@ -226,5 +227,126 @@ def load_and_preprocess_images(image_path_list, mode="crop"):
         # Verify shape is (1, C, H, W)
         if images.dim() == 3:
             images = images.unsqueeze(0)
+
+    return images
+
+
+def preprocess_images(image_path_list, mode="crop"):
+    """
+    加载并预处理图像列表，直接返回base64编码列表
+    仿照load_and_preprocess_images的逻辑，但返回base64而不是tensor
+    
+    Args:
+        image_path_list (list): 图像文件路径列表
+        mode (str): 预处理模式，"crop" 或 "pad"
+        
+    Returns:
+        list: base64编码的图像字符串列表
+        
+    Raises:
+        ValueError: 如果输入列表为空或模式无效
+    """
+    # 检查空列表
+    if len(image_path_list) == 0:
+        raise ValueError("At least 1 image is required")
+
+    # 验证模式
+    if mode not in ["crop", "pad"]:
+        raise ValueError("Mode must be either 'crop' or 'pad'")
+
+    images = []
+    shapes = set()
+    target_size = 518
+
+    # 首先处理所有图像并收集它们的形状
+    for image_path in image_path_list:
+        # 打开图像
+        img = Image.open(image_path)
+
+        # 处理透明通道
+        if img.mode == "RGBA":
+            background = Image.new("RGBA", img.size, (255, 255, 255, 255))
+            img = Image.alpha_composite(background, img)
+
+        # 转换为RGB
+        img = img.convert("RGB")
+
+        width, height = img.size
+
+        if mode == "pad":
+            # 使最大维度为518px，保持宽高比
+            if width >= height:
+                new_width = target_size
+                new_height = round(height * (new_width / width) / 14) * 14
+            else:
+                new_height = target_size
+                new_width = round(width * (new_height / height) / 14) * 14
+        else:  # mode == "crop"
+            # 设置宽度为518px
+            new_width = target_size
+            new_height = round(height * (new_width / width) / 14) * 14
+
+        # 调整大小
+        img = img.resize((new_width, new_height), Image.Resampling.BICUBIC)
+
+        # 中心裁剪（仅在crop模式下）
+        if mode == "crop" and new_height > target_size:
+            start_y = (new_height - target_size) // 2
+            img = img.crop((0, start_y, new_width, start_y + target_size))
+
+        # 填充模式下进行填充
+        if mode == "pad":
+            h_padding = target_size - img.height
+            w_padding = target_size - img.width
+
+            if h_padding > 0 or w_padding > 0:
+                pad_top = h_padding // 2
+                pad_bottom = h_padding - pad_top
+                pad_left = w_padding // 2
+                pad_right = w_padding - pad_left
+
+                # 创建新的填充图像（白色背景）
+                padded_img = Image.new("RGB", (target_size, target_size), (255, 255, 255))
+                padded_img.paste(img, (pad_left, pad_top))
+                img = padded_img
+
+        shapes.add((img.height, img.width))
+        images.append(img)
+
+    # 检查是否有不同的形状
+    if len(shapes) > 1:
+        print(f"Warning: Found images with different shapes: {shapes}")
+        # 找到最大尺寸
+        max_height = max(shape[0] for shape in shapes)
+        max_width = max(shape[1] for shape in shapes)
+
+        # 如果需要，填充图像
+        padded_images = []
+        for img in images:
+            h_padding = max_height - img.height
+            w_padding = max_width - img.width
+
+            if h_padding > 0 or w_padding > 0:
+                pad_top = h_padding // 2
+                pad_bottom = h_padding - pad_top
+                pad_left = w_padding // 2
+                pad_right = w_padding - pad_left
+
+                # 创建新的填充图像（白色背景）
+                padded_img = Image.new("RGB", (max_width, max_height), (255, 255, 255))
+                padded_img.paste(img, (pad_left, pad_top))
+                img = padded_img
+            
+            padded_images.append(img)
+        images = padded_images
+
+    # # 将所有图像转换为base64
+    # base64_images = []
+    # for img in images:
+    #     buffer = io.BytesIO()
+    #     img.save(buffer, format='JPEG', quality=95)
+    #     buffer.seek(0)
+    #     image_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
+    #     base64_images.append(image_base64)
 
     return images

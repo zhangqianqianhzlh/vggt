@@ -147,3 +147,9 @@ skyseg.onnx
 # pixi environments
 .pixi
 *.egg-info
+scripts/
+input*
+examples/
+.gradio/
+demo_viser_test*.py
+*test*.py

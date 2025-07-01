@@ -131,6 +131,7 @@ def viser_wrapper(
         name="viser_pcd",
         points=points_centered[init_conf_mask],
         colors=colors_flat[init_conf_mask],
+        # colors=np.zeros_like(colors_flat[init_conf_mask]),
         point_size=0.001,
         point_shape="circle",
     )
@@ -234,6 +235,32 @@ def viser_wrapper(
 
     # Add the camera frames to the scene
     visualize_frames(cam_to_world, images)
+    # #################
+    # # 添加红色框
+    # box_size = 200
+    # box_points = np.array([
+    #     [-box_size/2, -box_size/2, -box_size/2],
+    #     [ box_size/2, -box_size/2, -box_size/2],
+    #     [ box_size/2,  box_size/2, -box_size/2],
+    #     [-box_size/2,  box_size/2, -box_size/2],
+    #     [-box_size/2, -box_size/2,  box_size/2],
+    #     [ box_size/2, -box_size/2,  box_size/2],
+    #     [ box_size/2,  box_size/2,  box_size/2],
+    #     [-box_size/2,  box_size/2,  box_size/2],
+    # ])
+    # box_lines = [
+    #     [0, 1], [1, 2], [2, 3], [3, 0],  # 底面
+    #     [4, 5], [5, 6], [6, 7], [7, 4],  # 顶面
+    #     [0, 4], [1, 5], [2, 6], [3, 7],  # 连接底面和顶面
+    # ]
+    # for line in box_lines:
+    #     server.scene.add_line(
+    #         start=box_points[line[0]],
+    #         end=box_points[line[1]],
+    #         color=(1, 0, 0),  # 红色
+    #         line_width=2.0
+    #     )
+    #################
 
     print("Starting viser server...")
     # If background_mode is True, spawn a daemon thread so the main thread can continue.
@@ -307,7 +334,7 @@ def apply_sky_segmentation(conf: np.ndarray, image_folder: str) -> np.ndarray:
 
 parser = argparse.ArgumentParser(description="VGGT demo with viser for 3D visualization")
 parser.add_argument(
-    "--image_folder", type=str, default="examples/kitchen/images/", help="Path to folder containing images"
+    "--image_folder", type=str, default="/data3/qq/proj2/3d_rec/vggt/examples/sample1/images/", help="Path to folder containing images"
 )
 parser.add_argument("--use_point_map", action="store_true", help="Use point map instead of depth-based points")
 parser.add_argument("--background_mode", action="store_true", help="Run the viser server in background mode")
@@ -342,14 +369,14 @@ def main():
     print(f"Using device: {device}")
 
     print("Initializing and loading VGGT model...")
-    # model = VGGT.from_pretrained("facebook/VGGT-1B")
+    model = VGGT.from_pretrained("/data3/qq/models/VGGT-1B").to(device)
 
-    model = VGGT()
-    _URL = "https://huggingface.co/facebook/VGGT-1B/resolve/main/model.pt"
-    model.load_state_dict(torch.hub.load_state_dict_from_url(_URL))
+    # model = VGGT()
+    # _URL = "https://huggingface.co/facebook/VGGT-1B/resolve/main/model.pt"
+    # model.load_state_dict(torch.hub.load_state_dict_from_url(_URL))
 
-    model.eval()
-    model = model.to(device)
+    # model.eval()
+    # model = model.to(device)
 
     # Use the provided image folder path
     print(f"Loading images from {args.image_folder}...")
