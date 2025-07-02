@@ -16,3 +16,4 @@ pyceres==2.3
 websockets
 # git+https://github.com/jytime/LightGlue.git#egg=lightglue
 
+pyliblzfse

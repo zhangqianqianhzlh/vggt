@@ -9,6 +9,7 @@ VGGT 3D目标检测和可视化演示脚本
 2. 使用Qwen模型检测图片中的目标物体
 3. 将2D检测框映射到3D空间，生成水平对齐的3D包围框
 4. 使用viser进行交互式3D可视化
+5. 保存COLMAP格式的重建结果
 
 作者：Facebook Research & 修改者
 """
@@ -19,8 +20,12 @@ import time
 import threading
 import argparse
 import re
+import copy
+import torch.nn.functional as F
 from typing import List, Optional, Dict, Tuple, Any
 import warnings
+import json
+from datetime import datetime
 
 import numpy as np
 import torch
@@ -32,6 +37,8 @@ import base64
 from openai import OpenAI
 from PIL import Image
 import io
+import trimesh
+import pycolmap
 
 # 可选依赖
 try:
@@ -45,6 +52,8 @@ from vggt.models.vggt import VGGT
 from vggt.utils.load_fn import load_and_preprocess_images, preprocess_images
 from vggt.utils.geometry import closed_form_inverse_se3, unproject_depth_map_to_point_map
 from vggt.utils.pose_enc import pose_encoding_to_extri_intri
+from vggt.utils.helper import create_pixel_coordinate_grid, randomly_limit_trues
+from vggt.dependency.np_to_pycolmap import batch_np_matrix_to_pycolmap_wo_track
 
 import yaml
 llm_config = yaml.safe_load(open("env/llm.yaml"))
@@ -53,8 +62,7 @@ llm_config = yaml.safe_load(open("env/llm.yaml"))
 class ObjectDetector:
     """Qwen视觉模型目标检测器"""
     
-    def __init__(self, base_url: str, 
-                 api_key: str):
+    def __init__(self, base_url: str, api_key: str):
         self.client = OpenAI(base_url=base_url, api_key=api_key)
         self.model_name = "Qwen/Qwen2.5-VL-72B-Instruct"
     
@@ -65,21 +73,24 @@ class ObjectDetector:
         buffer.seek(0)
         return base64.b64encode(buffer.getvalue()).decode('utf-8')
     
-    def detect_single_image(self, image_path: str, object_name: str) -> Optional[Tuple[int, int, int, int]]:
+    def detect_single_image_multi_objects(self, image_path: str, object_names: List[str]) -> Dict[str, Optional[Tuple[int, int, int, int]]]:
         """
-        检测单张图片中的目标物体
+        检测单张图片中的多个目标物体
         
         Args:
             image_path: 图片路径
-            object_name: 目标物体名称
+            object_names: 目标物体名称列表
             
         Returns:
-            边框坐标 (x1, y1, x2, y2) 或 None
+            字典，键为物体名称，值为边框坐标 (x1, y1, x2, y2) 或 None
         """
         try:
             images = preprocess_images([image_path])
             image = images[0]
             image_base64 = self._image_to_base64(image)
+            
+            # 构建多目标检测的提示词
+            objects_str = "、".join(object_names)
             
             response = self.client.chat.completions.create(
                 model=self.model_name,
@@ -87,55 +98,64 @@ class ObjectDetector:
                     "role": "user",
                     "content": [{
                         "type": "text",
-                        "text": f"识别图中{object_name}的坐标, 输出边框坐标, 用 [x1, y1, x2, y2] 格式输出"
+                        "text": f"识别图中的{objects_str}，对每个物体输出边框坐标。格式：物体名称: [x1, y1, x2, y2]。如果某个物体不存在，输出：物体名称: 无"
                     }, {
                         "type": "image_url",
                         "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"}
                     }]
                 }],
                 temperature=0.0,
-                max_tokens=512
+                max_tokens=1024
             )
             
             content = response.choices[0].message.content
-            print(f"Qwen识别结果: {content}")
+            print(f"Qwen多目标识别结果: {content}")
             
-            # 提取坐标数字
-            numbers = re.findall(r'\d+', content)
-            if len(numbers) >= 4:
-                x1, y1, x2, y2 = map(int, numbers[:4])
-                print(f"提取的边框坐标: ({x1}, {y1}, {x2}, {y2})")
-                return (x1, y1, x2, y2)
-            else:
-                print("未能从响应中提取有效的边框坐标")
-                return None
+            # 解析多目标检测结果
+            results = {}
+            for object_name in object_names:
+                # 尝试找到该物体的坐标
+                pattern = rf"{re.escape(object_name)}[：:]\s*\[(\d+),\s*(\d+),\s*(\d+),\s*(\d+)\]"
+                match = re.search(pattern, content)
+                
+                if match:
+                    x1, y1, x2, y2 = map(int, match.groups())
+                    results[object_name] = (x1, y1, x2, y2)
+                    print(f"提取的{object_name}边框坐标: ({x1}, {y1}, {x2}, {y2})")
+                else:
+                    results[object_name] = None
+                    print(f"未找到{object_name}的边框坐标")
+            
+            return results
                 
         except Exception as e:
-            print(f"检测失败: {e}")
-            return None
+            print(f"多目标检测失败: {e}")
+            return {name: None for name in object_names}
     
-    def detect_multi_images(self, image_paths: List[str], object_name: str, 
-                          max_images: int = 4) -> List[Optional[Tuple[int, int, int, int]]]:
+    def detect_multi_images_multi_objects(self, image_paths: List[str], object_names: List[str], 
+                                        max_images: int = 4) -> Dict[str, List[Optional[Tuple[int, int, int, int]]]]:
         """
-        检测多张图片中的目标物体
+        检测多张图片中的多个目标物体
         
         Args:
             image_paths: 图片路径列表
-            object_name: 目标物体名称
+            object_names: 目标物体名称列表
             max_images: 最多处理的图片数量
             
         Returns:
-            每张图片的边框坐标列表
+            字典，键为物体名称，值为每张图片的边框坐标列表
         """
         selected_paths = image_paths[:max_images]
-        results = []
+        results = {name: [] for name in object_names}
         
-        print(f"开始识别 {len(selected_paths)} 张图片中的目标...")
+        print(f"开始识别 {len(selected_paths)} 张图片中的 {len(object_names)} 个目标...")
         
         for i, image_path in enumerate(selected_paths):
             print(f"正在识别第 {i+1}/{len(selected_paths)} 张图片: {image_path}")
-            bbox = self.detect_single_image(image_path, object_name)
-            results.append(bbox)
+            image_results = self.detect_single_image_multi_objects(image_path, object_names)
+            
+            for object_name in object_names:
+                results[object_name].append(image_results[object_name])
         
         return results
 
@@ -578,31 +598,6 @@ class ViserVisualizer:
             visible=True
         )
         
-        # 添加尺寸信息标签
-        # size_text = f"尺寸: {box_info['size'][0]:.2f}×{box_info['size'][1]:.2f}×{box_info['size'][2]:.2f}"
-        # size_label_position = box_info['center'].copy()
-        # size_label_position[2] += box_info['size'][2] * 0.4  # 在主标签下方
-        
-        # self.server.scene.add_label(
-        #     name="size_label",
-        #     text=size_text,
-        #     position=size_label_position,
-        #     visible=True
-        # )
-        
-        # 添加角度信息标签
-        # angle_deg = np.degrees(box_info['rotation_angle'])
-        # angle_text = f"旋转角度: {angle_deg:.1f}°"
-        # angle_label_position = box_info['center'].copy()
-        # angle_label_position[2] += box_info['size'][2] * 0.2  # 在尺寸标签下方
-        
-        # self.server.scene.add_label(
-        #     name="angle_label", 
-        #     text=angle_text,
-        #     position=angle_label_position,
-        #     visible=True
-        # )
-        
         print("3D包围框和标签可视化完成")
         print(f"- 目标标签: {object_name}")
 
@@ -628,6 +623,131 @@ class ViserVisualizer:
             )
             
             print(f"添加3D标签: '{text}' 在位置 {position}")
+
+
+def save_colmap_reconstruction(pred_dict: dict, image_folder: str, colmap_path: str, 
+                             conf_thres_value: float = 5.0, max_points_for_colmap: int = 100000):
+    """
+    保存COLMAP格式的重建结果
+    
+    Args:
+        pred_dict: VGGT预测结果字典
+        image_folder: 图片文件夹路径
+        colmap_path: COLMAP输出路径
+        conf_thres_value: 置信度阈值
+        max_points_for_colmap: 最大点数
+    """
+    print(f"\n=== 保存COLMAP格式重建结果 - 尺寸调试 ===")
+    
+    # 解包预测结果
+    images = pred_dict["images"]  # (S, 3, H, W)
+    depth_map = pred_dict["depth"]  # (S, H, W, 1)
+    depth_conf = pred_dict["depth_conf"]  # (S, H, W)
+    extrinsics_cam = pred_dict["extrinsic"]  # (S, 3, 4)
+    intrinsics_cam = pred_dict["intrinsic"]  # (S, 3, 3)
+    
+    # 添加调试信息
+    print(f"images 形状: {images.shape}")
+    print(f"depth_map 形状: {depth_map.shape}")
+    print(f"depth_conf 形状: {depth_conf.shape}")
+    print(f"extrinsics_cam 形状: {extrinsics_cam.shape}")
+    print(f"intrinsics_cam 形状: {intrinsics_cam.shape}")
+    
+    # 获取图片文件名
+    image_files = sorted(glob.glob(os.path.join(image_folder, "*")))
+    base_image_path_list = [os.path.basename(path) for path in image_files]
+    
+    # 生成3D点云
+    points_3d = unproject_depth_map_to_point_map(depth_map, extrinsics_cam, intrinsics_cam)
+    
+    # 从points_3d获取尺寸信息
+    num_frames, height, width, _ = points_3d.shape
+    print(f"从points_3d获取: num_frames={num_frames}, height={height}, width={width}")
+
+    # COLMAP转换参数
+    shared_camera = False  # 在前向推理模式下，不支持共享相机
+    camera_type = "PINHOLE"  # 在前向推理模式下，只支持PINHOLE相机
+
+    # 使用实际的图像尺寸，而不是固定的518x518
+    actual_height, actual_width = depth_conf.shape[1], depth_conf.shape[2]
+    image_size = np.array([actual_width, actual_height])  # 注意：COLMAP使用[width, height]格式
+
+    print(f"使用的image_size: {image_size} (width={actual_width}, height={actual_height})")
+    
+    # 准备RGB颜色 - 保持与depth_conf相同的尺寸
+    points_rgb = images.transpose(0, 2, 3, 1)  # (S, H, W, 3) - 保持原始尺寸350x518
+    points_rgb = (points_rgb * 255).astype(np.uint8)
+
+    print(f"points_rgb 形状: {points_rgb.shape}")
+    print(f"depth_conf 形状: {depth_conf.shape}")
+    
+    # 创建像素坐标网格 (S, H, W, 3), 包含x, y坐标和帧索引
+    points_xyf = create_pixel_coordinate_grid(num_frames, height, width)
+    
+    # 应用置信度掩码
+    conf_mask = depth_conf >= conf_thres_value
+    # 最多写入max_points_for_colmap个3D点到colmap重建对象
+    conf_mask = randomly_limit_trues(conf_mask, max_points_for_colmap)
+    
+    points_3d = points_3d[conf_mask]
+    points_xyf = points_xyf[conf_mask]
+    points_rgb = points_rgb[conf_mask]
+    
+    print(f"有效3D点数量: {len(points_3d)}")
+    print("转换为COLMAP格式...")
+    
+    # 转换为COLMAP格式
+    reconstruction = batch_np_matrix_to_pycolmap_wo_track(
+        points_3d,
+        points_xyf,
+        points_rgb,
+        extrinsics_cam,
+        intrinsics_cam,
+        image_size,
+        shared_camera=shared_camera,
+        camera_type=camera_type,
+    )
+    
+    # 重命名和缩放相机参数（这里简化处理，不进行复杂的坐标变换）
+    reconstruction = rename_colmap_recons_and_rescale_camera_simple(
+        reconstruction,
+        base_image_path_list,
+        img_size=518,
+        shared_camera=shared_camera,
+    )
+    
+    # 保存重建结果
+    print(f"保存重建结果到 {colmap_path}")
+    os.makedirs(colmap_path, exist_ok=True)
+    reconstruction.write(colmap_path)
+    
+    # 保存点云用于快速可视化
+    point_cloud_path = os.path.join(colmap_path, "points.ply")
+    trimesh.PointCloud(points_3d, colors=points_rgb).export(point_cloud_path)
+    print(f"保存点云到 {point_cloud_path}")
+    
+    print("COLMAP格式保存完成!")
+
+
+def rename_colmap_recons_and_rescale_camera_simple(
+    reconstruction, image_paths, img_size, shared_camera=False
+):
+    """
+    简化版的重命名和缩放相机参数函数
+    """
+    rescale_camera = True
+    
+    for pyimageid in reconstruction.images:
+        # 重命名图像到原始名称
+        pyimage = reconstruction.images[pyimageid]
+        pyimage.name = image_paths[pyimageid - 1]
+        
+        if shared_camera:
+            # 如果使用共享相机，所有图像共享同一个相机
+            # 不需要再次缩放
+            rescale_camera = False
+    
+    return reconstruction
 
 
 def apply_sky_segmentation(conf: np.ndarray, image_folder: str) -> np.ndarray:
@@ -668,6 +788,85 @@ def apply_sky_segmentation(conf: np.ndarray, image_folder: str) -> np.ndarray:
     return conf
 
 
+def save_multi_detection_results_json(detection_results: Dict[str, Dict[str, Any]], 
+                                    multi_bboxes: Dict[str, List[Optional[tuple]]], 
+                                    image_files: List[str], 
+                                    scene_center: np.ndarray, 
+                                    output_path: str):
+    """
+    保存多个3D框的关键坐标和2D图片目标信息为JSON格式
+    """
+    # 创建输出数据结构
+    detection_data = {
+        "metadata": {
+            "timestamp": datetime.now().isoformat(),
+            "total_objects": len(detection_results),
+            "object_names": list(detection_results.keys()),
+            "total_images": len(image_files),
+            "detection_method": "VGGT + Qwen2.5-VL",
+            "coordinate_system": "world_coordinates"
+        },
+        
+        # 多个3D包围框信息
+        "3d_bounding_boxes": {},
+        
+        # 2D检测结果（按图片组织）
+        "2d_detections": []
+    }
+    
+    # 处理每个目标的3D包围框
+    for object_name, box_info in detection_results.items():
+        if box_info is not None:
+            detection_data["3d_bounding_boxes"][object_name] = {
+                "center": (box_info['center'] + scene_center).tolist(),     # [x, y, z] - 3个数字
+                "size": box_info['size'].tolist(),                          # [w, l, h] - 3个数字
+                "rotation_angle": float(box_info['rotation_angle'])         # 角度 - 1个数字
+                # 总共只有7个数字！
+            }
+    
+    # 按图片组织2D检测结果
+    for i, image_file in enumerate(image_files):
+        image_name = os.path.basename(image_file)
+        
+        image_detection = {
+            "image_id": i,
+            "image_name": image_name,
+            "image_path": image_file,
+            "objects": {}
+        }
+        
+        # 处理该图片中的每个目标
+        for object_name in detection_results.keys():
+            if i < len(multi_bboxes[object_name]):
+                bbox = multi_bboxes[object_name][i]
+                
+                if bbox is not None:
+                    image_detection["objects"][object_name] = {
+                        "bbox": [int(bbox[0]), int(bbox[1]), int(bbox[2]), int(bbox[3])],  # [x1, y1, x2, y2]
+                        "score": 1.0  # 默认置信度
+                    }
+                else:
+                    image_detection["objects"][object_name] = None
+        
+        detection_data["2d_detections"].append(image_detection)
+    
+    # 保存JSON文件
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    with open(output_path, 'w', encoding='utf-8') as f:
+        json.dump(detection_data, f, ensure_ascii=False, indent=2)
+    
+    print(f"多目标检测结果已保存到: {output_path}")
+    print(f"- 检测到的目标数量: {len(detection_results)}")
+    for object_name, box_info in detection_results.items():
+        if box_info is not None:
+            center = (box_info['center'] + scene_center).tolist()
+            size = box_info['size'].tolist()
+            angle = float(box_info['rotation_angle'])
+            print(f"- {object_name}: 中心{center}, 尺寸{size}, 角度{angle:.3f}")
+        else:
+            print(f"- {object_name}: 3D框计算失败")
+
+
 def main_pipeline(
     pred_dict: dict,
     port: int = 8080,
@@ -676,7 +875,9 @@ def main_pipeline(
     background_mode: bool = False,
     mask_sky: bool = False,
     image_folder: str = None,
-    object_name: str = "黄色小车",
+    object_names: List[str] = ["黄色小车"],
+    save_colmap: bool = False,
+    colmap_path: str = "colmap_recons",
 ):
     """主要的处理和可视化流程"""
     
@@ -692,7 +893,14 @@ def main_pipeline(
     depth_conf = pred_dict["depth_conf"]  # (S, H, W)
     extrinsics_cam = pred_dict["extrinsic"]  # (S, 3, 4)
     intrinsics_cam = pred_dict["intrinsic"]  # (S, 3, 3)
-
+    
+    # 添加调试信息
+    print(f"main_pipeline - images 形状: {images.shape}")
+    print(f"main_pipeline - world_points_map 形状: {world_points_map.shape}")
+    print(f"main_pipeline - conf_map 形状: {conf_map.shape}")
+    print(f"main_pipeline - depth_map 形状: {depth_map.shape}")
+    print(f"main_pipeline - depth_conf 形状: {depth_conf.shape}")
+    
     # 选择点云数据源
     if not use_point_map:
         world_points = unproject_depth_map_to_point_map(depth_map, extrinsics_cam, intrinsics_cam)
@@ -783,20 +991,20 @@ def main_pipeline(
             
             # 步骤1：目标检测
             detector = ObjectDetector(base_url=llm_config["llm_server"]["base_url"], api_key=llm_config["llm_server"]["api_key"])
-            bboxes = detector.detect_multi_images(image_files, object_name, max_images=40)
+            bboxes = detector.detect_multi_images_multi_objects(image_files, object_names, max_images=40)
             print(f"检测到的边框: {bboxes}")
             
             # 步骤2：显示带边框的相机视锥体
-            visualizer.visualize_frames_with_bbox(cam_to_world, images, bboxes)
+            visualizer.visualize_frames_with_bbox(cam_to_world, images, bboxes[object_names[0]])
             
             # 步骤3：3D框计算
             if use_point_map:
                 box_info = Box3DMapper.map_to_3d_box(
-                    bboxes, world_points_map, depth_map, extrinsics_cam, intrinsics_cam
+                    bboxes[object_names[0]], world_points_map, depth_map, extrinsics_cam, intrinsics_cam
                 )
             else:
                 box_info = Box3DMapper.map_to_3d_box(
-                    bboxes, world_points, depth_map, extrinsics_cam, intrinsics_cam
+                    bboxes[object_names[0]], world_points, depth_map, extrinsics_cam, intrinsics_cam
                 )
             
             # 步骤4：3D框可视化
@@ -806,27 +1014,31 @@ def main_pipeline(
                 print(f"旋转角度: {box_info['rotation_angle']:.3f} 弧度 ({np.degrees(box_info['rotation_angle']):.1f} 度)")
                 
                 # 添加目标名称到box_info中
-                box_info['object_name'] = object_name  # 使用检测的目标名称
+                box_info['object_name'] = object_names[0]  # 使用检测的目标名称
                 visualizer.add_3d_box(box_info, scene_center)
                 
-                # # 可选：添加额外的自定义标签
-                # custom_labels = [
-                #     {
-                #         'text': '检测置信度: 85%',
-                #         'position': (box_info['center'][0], box_info['center'][1], box_info['center'][2] - box_info['size'][2] * 0.3)
-                #     },
-                #     {
-                #         'text': '检测时间: 2024-01-15',
-                #         'position': (box_info['center'][0], box_info['center'][1], box_info['center'][2] - box_info['size'][2] * 0.5)
-                #     }
-                # ]
-                # visualizer.add_3d_text_labels(custom_labels)
+                # === 新增：保存检测结果为JSON ===
+                json_output_path = os.path.join(colmap_path, "detection_results.json")
+                print(f"保存检测结果到: {json_output_path}")
+                save_multi_detection_results_json(
+                    {object_names[0]: box_info}, bboxes, image_files, scene_center, json_output_path
+                )
             else:
                 print("3D框计算失败")
         else:
             print("图片文件夹为空")
     else:
         print("未提供图片文件夹路径")
+
+    # === 保存COLMAP格式结果 ===
+    if save_colmap and image_folder is not None:
+        save_colmap_reconstruction(
+            pred_dict, 
+            image_folder, 
+            colmap_path, 
+            conf_thres_value=5.0, 
+            max_points_for_colmap=100000
+        )
 
     # 启动服务器循环
     print("Starting viser server...")
@@ -852,7 +1064,9 @@ def main():
     parser.add_argument("--port", type=int, default=8080, help="viser服务器端口号")
     parser.add_argument("--conf_threshold", type=float, default=25.0, help="初始置信度阈值百分比")
     parser.add_argument("--mask_sky", action="store_true", help="应用天空分割过滤天空点")
-    parser.add_argument("--object_name", type=str, default="黄色小车", help="要检测的目标物体名称")
+    parser.add_argument("--object_names", type=str, nargs='+', default=["黄色小车"], help="要检测的目标物体名称列表，用空格分隔")
+    parser.add_argument("--save_colmap", action="store_true", help="保存colmap重建结果")
+    parser.add_argument("--colmap_path", type=str, default="examples/kitchen_simple/sparse", help="colmap重建结果路径")
 
     args = parser.parse_args()
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -869,6 +1083,7 @@ def main():
 
     images = load_and_preprocess_images(image_names).to(device)
     print(f"预处理后的图片形状: {images.shape}")
+    print(f"图片尺寸详细信息: {images.shape}")
 
     # 运行推理
     print("运行推理...")
@@ -877,6 +1092,12 @@ def main():
     with torch.no_grad():
         with torch.cuda.amp.autocast(dtype=dtype):
             predictions = model(images)
+
+    # 在predictions获取后立即添加调试信息：
+    print("=== VGGT模型输出尺寸调试 ===")
+    for key, value in predictions.items():
+        if isinstance(value, torch.Tensor):
+            print(f"{key}: {value.shape}")
 
     # 转换姿态编码
     print("转换姿态编码为外参和内参矩阵...")
@@ -900,10 +1121,12 @@ def main():
         background_mode=args.background_mode,
         mask_sky=args.mask_sky,
         image_folder=args.image_folder,
-        object_name=args.object_name,
+        object_names=args.object_names,
+        save_colmap=args.save_colmap,
+        colmap_path=args.colmap_path,
     )
     print("可视化完成")
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  
     main()
