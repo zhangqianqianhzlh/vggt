@@ -154,3 +154,4 @@ examples/
 demo_viser_test*.py
 *test*.py
 *_bak.py
+output_dir/
