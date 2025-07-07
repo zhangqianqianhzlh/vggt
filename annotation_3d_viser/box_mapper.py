@@ -199,7 +199,7 @@ class Box3DMapper:
         # 确定水平面的两个方向
         # 根据向上方向确定水平面
         if np.allclose(up_direction, [1.0, 0.0, 0.0]) or np.allclose(up_direction, [-1.0, 0.0, 0.0]):
-            # X轴向上，水平面是YZ平面
+            print("X轴向上，水平面是YZ平面")
             horizontal_indices = [1, 2]  # Y, Z
             horizontal_labels = ['Y', 'Z']
         elif np.allclose(up_direction, [0.0, 1.0, 0.0]) or np.allclose(up_direction, [0.0, -1.0, 0.0]):

@@ -6,7 +6,7 @@ import time
 import threading
 import glob
 import numpy as np
-from typing import List
+from typing import List, Tuple, Optional, Dict, Any
 import os
 
 from vggt.utils.geometry import closed_form_inverse_se3, unproject_depth_map_to_point_map
@@ -29,6 +29,7 @@ def main_pipeline(
     mask_sky: bool = False,
     image_folder: str = None,
     object_names: List[str] = None,
+    up_down_direction: str = None,  # 新增参数
     save_colmap: bool = False,
     colmap_path: str = "colmap_recons",
     align_to_gravity: bool = True,
@@ -62,23 +63,35 @@ def main_pipeline(
     
     # === 场景对齐：自动检测朝向并对齐到重力方向 ===
     if align_to_gravity:
-        print("\n=== 场景重力对齐（自动检测朝向） ===")
+        print("\n=== 场景重力对齐 ===")
+        
+        # 检查用户指定的上下方向是否有效
+        if up_down_direction and up_down_direction.upper() in ['X', 'Y', 'Z', '-X', '-Y', '-Z']:
+            print(f"使用用户指定的上下方向: {up_down_direction}")
+        elif up_down_direction is not None:
+            print(f"用户指定的上下方向 '{up_down_direction}' 无效，将使用自动检测")
+        else:
+            print("使用自动检测的朝向")
+            
         if not use_point_map:
             # 如果使用深度图生成点云，先生成点云再对齐
             world_points = unproject_depth_map_to_point_map(depth_map, extrinsics_cam, intrinsics_cam)
             world_points, extrinsics_cam, transform_matrix, scene_alignment_info = SceneAligner.align_scene_to_gravity(
-                world_points, extrinsics_cam)
+                world_points, extrinsics_cam, user_specified_up_axis=up_down_direction)
             # 更新预测字典
             pred_dict["world_points"] = world_points
             pred_dict["extrinsic"] = extrinsics_cam
         else:
             # 直接对齐现有的点云
             world_points_map, extrinsics_cam, transform_matrix, scene_alignment_info = SceneAligner.align_scene_to_gravity(
-                world_points_map, extrinsics_cam)
+                world_points_map, extrinsics_cam, user_specified_up_axis=up_down_direction)
             pred_dict["world_points"] = world_points_map
             pred_dict["extrinsic"] = extrinsics_cam
-        
-        print("场景已自动对齐到重力方向，并根据需要自动翻转")
+            
+        if scene_alignment_info['user_specified']:
+            print("场景已对齐到用户指定的方向")
+        else:
+            print("场景已对齐到自动检测的最佳方向")
     
     # 选择点云数据源
     if not use_point_map:

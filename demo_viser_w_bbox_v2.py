@@ -32,10 +32,13 @@ def main():
     parser.add_argument("--image_folder", type=str, default="/data3/qq/proj2/3d_rec/vggt/examples/kitchen/images/", help="包含图片的文件夹路径")
     parser.add_argument("--use_point_map", action="store_true", help="使用点图而不是基于深度的点")
     parser.add_argument("--background_mode", action="store_true", help="在后台模式运行viser服务器")
-    parser.add_argument("--port", type=int, default=8080, help="viser服务器端口号")
+    parser.add_argument("--port", type=int, default=8930, help="viser服务器端口号")
     parser.add_argument("--conf_threshold", type=float, default=25.0, help="初始置信度阈值百分比")
     parser.add_argument("--mask_sky", action="store_true", help="应用天空分割过滤天空点")
     parser.add_argument("--object_names", type=str, nargs='+', default=["黄色小车"], help="要检测的目标物体名称列表，用空格分隔")
+    parser.add_argument("--up_down_direction", type=str, default=None, 
+               choices=['X', 'Y', 'Z', '-X', '-Y', '-Z'],
+               help="手动设置地面法向量方向（即向上方向）：X, Y, Z, -X, -Y, -Z")
     parser.add_argument("--save_colmap", action="store_true", help="保存colmap重建结果")
     parser.add_argument("--colmap_path", type=str, default="examples/kitchen_simple/sparse", help="colmap重建结果路径")
     parser.add_argument("--align_to_gravity", action="store_true", default=True, help="将场景对齐到重力方向")
@@ -95,6 +98,7 @@ def main():
         mask_sky=args.mask_sky,
         image_folder=args.image_folder,
         object_names=args.object_names,
+        up_down_direction=args.up_down_direction,  # 添加这个参数
         save_colmap=args.save_colmap,
         colmap_path=args.colmap_path,
         align_to_gravity=args.align_to_gravity,

@@ -3,7 +3,7 @@
 """
 
 import numpy as np
-from typing import Tuple, Dict, Any
+from typing import Tuple, Dict, Any, List, Optional
 from .config import DEFAULT_CONFIG
 
 
@@ -135,14 +135,46 @@ class SceneAligner:
         return best_target, best_axis_name
     
     @staticmethod
-    def align_scene_to_gravity(world_points: np.ndarray, 
-                             extrinsics: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray, Dict[str, Any]]:
+    def parse_user_axis(user_axis: str) -> Tuple[Optional[np.ndarray], Optional[str]]:
         """
-        将场景对齐到重力方向（最小旋转对齐）
+        解析用户指定的轴方向
+        
+        Args:
+            user_axis: 用户指定的轴方向，如 "X", "Y", "Z", "-X", "-Y", "-Z"
+            
+        Returns:
+            对应的单位向量和轴名称，如果无效则返回 (None, None)
+        """
+        axis_mapping = {
+            'X': (np.array([1.0, 0.0, 0.0]), 'X'),
+            'Y': (np.array([0.0, 1.0, 0.0]), 'Y'),
+            'Z': (np.array([0.0, 0.0, 1.0]), 'Z'),
+            '-X': (np.array([-1.0, 0.0, 0.0]), '-X'),
+            '-Y': (np.array([0.0, -1.0, 0.0]), '-Y'),
+            '-Z': (np.array([0.0, 0.0, -1.0]), '-Z')
+        }
+        
+        if user_axis is None:
+            return None, None
+        
+        user_axis_upper = user_axis.upper()
+        if user_axis_upper in axis_mapping:
+            return axis_mapping[user_axis_upper]
+        else:
+            print(f"警告: 不支持的轴方向 '{user_axis}'，将使用自动检测")
+            return None, None
+    
+    @staticmethod
+    def align_scene_to_gravity(world_points: np.ndarray, 
+                             extrinsics: np.ndarray,
+                             user_specified_up_axis: str = None) -> Tuple[np.ndarray, np.ndarray, np.ndarray, Dict[str, Any]]:
+        """
+        将场景对齐到重力方向（支持用户指定或自动检测）
         
         Args:
             world_points: 世界坐标点云 (S, H, W, 3)
             extrinsics: 相机外参 (S, 3, 4)
+            user_specified_up_axis: 用户指定的地面法向量方向，如 "X", "Y", "Z", "-X", "-Y", "-Z"
             
         Returns:
             对齐后的点云、外参、变换矩阵和对齐信息
@@ -157,19 +189,39 @@ class SceneAligner:
             default_alignment_info = {
                 'up_direction': np.array([0.0, 0.0, 1.0]),
                 'axis_name': 'Z',
-                'rotation_matrix': np.eye(3)
+                'rotation_matrix': np.eye(3),
+                'user_specified': False
             }
             return world_points, extrinsics, np.eye(4), default_alignment_info
         
-        print("\n=== 最小旋转地面对齐 ===")
+        print("\n=== 场景对齐 ===")
         
-        # 估计地面法向量
-        ground_normal = SceneAligner.estimate_ground_plane(valid_points)
+        # 尝试解析用户指定的方向
+        user_ground_normal, axis_name = SceneAligner.parse_user_axis(user_specified_up_axis)
         
-        # 找到最佳对齐轴
-        target_normal, axis_name = SceneAligner.find_best_axis_alignment(ground_normal, extrinsics)
-        
-        print(f"选定目标法向量: [{target_normal[0]:.3f}, {target_normal[1]:.3f}, {target_normal[2]:.3f}] ({axis_name}轴)")
+        # 如果用户指定了有效的地面法向量方向，直接使用
+        if user_ground_normal is not None and axis_name is not None:
+            print(f"使用用户指定的地面法向量方向: {axis_name}轴")
+            print(f"用户指定的地面法向量: [{user_ground_normal[0]:.3f}, {user_ground_normal[1]:.3f}, {user_ground_normal[2]:.3f}]")
+            
+            # 直接使用用户指定的地面法向量
+            ground_normal = user_ground_normal
+            target_normal = user_ground_normal  # 目标就是用户指定的方向
+            
+            user_specified = True
+        else:
+            # 自动检测最佳对齐方向
+            print("使用自动检测的最佳对齐方向")
+            
+            # 首先估计当前的地面法向量
+            ground_normal = SceneAligner.estimate_ground_plane(valid_points)
+            print(f"自动检测的地面法向量: [{ground_normal[0]:.3f}, {ground_normal[1]:.3f}, {ground_normal[2]:.3f}]")
+            
+            # 然后找到最佳对齐轴
+            target_normal, axis_name = SceneAligner.find_best_axis_alignment(ground_normal, extrinsics)
+            print(f"选定目标法向量: [{target_normal[0]:.3f}, {target_normal[1]:.3f}, {target_normal[2]:.3f}] ({axis_name}轴)")
+            
+            user_specified = False
         
         # 计算旋转矩阵
         if np.allclose(ground_normal, target_normal):
@@ -204,14 +256,16 @@ class SceneAligner:
         
         # 创建对齐信息字典
         alignment_info = {
-            'up_direction': target_normal,
+            'up_direction': target_normal,  # 这是地面的法向量，也就是"向上"方向
             'axis_name': axis_name,
-            'rotation_matrix': rotation_matrix
+            'rotation_matrix': rotation_matrix,
+            'user_specified': user_specified
         }
         
         print(f"对齐信息:")
-        print(f"  向上方向: {alignment_info['up_direction']}")
+        print(f"  地面法向量(向上方向): {alignment_info['up_direction']}")
         print(f"  对齐轴: {alignment_info['axis_name']}")
+        print(f"  用户指定: {alignment_info['user_specified']}")
         
         # 应用变换到点云
         aligned_world_points = world_points.copy()
