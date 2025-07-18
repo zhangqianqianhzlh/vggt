@@ -530,13 +530,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "--colmap_path", 
         type=Path, 
-        required=True,
+        default="/data3/qq/proj2/3d_rec/vggt/examples/sample1/sparse",
         help="COLMAP重建目录路径 (包含cameras.bin, images.bin, points3D.bin)"
     )
     parser.add_argument(
         "--images_path", 
         type=Path, 
-        required=True,
+        default="/data3/qq/proj2/3d_rec/vggt/examples/sample1/images",
         help="COLMAP图像目录路径"
     )
     parser.add_argument(

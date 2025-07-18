@@ -30,7 +30,7 @@ def main_pipeline(
     image_folder: str = None,
     object_names: List[str] = None,
     up_down_direction: str = None,  # 新增参数
-    save_colmap: bool = False,
+    save_colmap: bool = True,
     colmap_path: str = "colmap_recons",
     align_to_gravity: bool = True,
     save_3d_views: bool = True,
@@ -220,12 +220,16 @@ def main_pipeline(
         print("未提供图片文件夹路径")
 
     # === 保存COLMAP格式结果 ===
+    
     if save_colmap and image_folder is not None:
+        print(f"保存COLMAP格式结果到: {colmap_path}")
         save_colmap_reconstruction(
             pred_dict, 
             image_folder, 
             colmap_path
         )
+    else:
+        print("未保存COLMAP格式结果, 因为save_colmap为False或image_folder为None", save_colmap, image_folder)
 
     # 启动服务器循环
     print("Starting viser server...")

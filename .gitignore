@@ -155,3 +155,5 @@ demo_viser_test*.py
 *test*.py
 *_bak.py
 output_dir/
+colmap_ply.py
+colmap_visualizer_noanno.py

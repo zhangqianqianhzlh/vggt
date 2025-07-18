@@ -78,6 +78,10 @@ def viser_wrapper(
     intrinsics_cam = pred_dict["intrinsic"]  # (S, 3, 3)
 
     # Compute world points from depth if not using the precomputed point map
+    print(f"use_point_map: {use_point_map}")
+    print(f"depth_map shape: {depth_map.shape}")
+    print(f"extrinsics_cam shape: {extrinsics_cam.shape}")
+    print(f"intrinsics_cam shape: {intrinsics_cam.shape}")
     if not use_point_map:
         world_points = unproject_depth_map_to_point_map(depth_map, extrinsics_cam, intrinsics_cam)
         conf = depth_conf
@@ -127,6 +131,8 @@ def viser_wrapper(
     # Compute the threshold value as the given percentile
     init_threshold_val = np.percentile(conf_flat, init_conf_threshold)
     init_conf_mask = (conf_flat >= init_threshold_val) & (conf_flat > 0.1)
+    print("number of points before conf_mask: ", len(points_centered))
+    print("number of points: ", len(points_centered[init_conf_mask]))
     point_cloud = server.scene.add_point_cloud(
         name="viser_pcd",
         points=points_centered[init_conf_mask],
@@ -340,7 +346,7 @@ parser.add_argument("--use_point_map", action="store_true", help="Use point map 
 parser.add_argument("--background_mode", action="store_true", help="Run the viser server in background mode")
 parser.add_argument("--port", type=int, default=8080, help="Port number for the viser server")
 parser.add_argument(
-    "--conf_threshold", type=float, default=25.0, help="Initial percentage of low-confidence points to filter out"
+    "--conf_threshold", type=float, default=70.0, help="Initial percentage of low-confidence points to filter out"
 )
 parser.add_argument("--mask_sky", action="store_true", help="Apply sky segmentation to filter out sky points")
 

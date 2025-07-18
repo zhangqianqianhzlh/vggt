@@ -37,15 +37,16 @@ def save_colmap_reconstruction(pred_dict: dict, image_folder: str, colmap_path: 
         pred_dict: VGGT预测结果字典
         image_folder: 图片文件夹路径
         colmap_path: COLMAP输出路径
-        conf_thres_value: 置信度阈值
+        conf_thres_value: 置信度阈值（百分位数，0-100）
         max_points_for_colmap: 最大点数
     """
     if conf_thres_value is None:
-        conf_thres_value = DEFAULT_CONFIG["conf_thres_value"]
+        conf_thres_value = DEFAULT_CONFIG["default_conf_threshold"]  # 使用百分位数默认值25.0
     if max_points_for_colmap is None:
         max_points_for_colmap = DEFAULT_CONFIG["max_points_for_colmap"]
     
     print(f"\n=== 保存COLMAP格式重建结果 - 尺寸调试 ===")
+    print(f"使用置信度百分位数阈值: {conf_thres_value}%")
     
     # 解包预测结果
     images = pred_dict["images"]  # (S, 3, H, W)
@@ -60,6 +61,14 @@ def save_colmap_reconstruction(pred_dict: dict, image_folder: str, colmap_path: 
     print(f"depth_conf 形状: {depth_conf.shape}")
     print(f"extrinsics_cam 形状: {extrinsics_cam.shape}")
     print(f"intrinsics_cam 形状: {intrinsics_cam.shape}")
+    
+    # 添加置信度统计信息
+    print(f"depth_conf 统计信息:")
+    print(f"  最小值: {depth_conf.min():.6f}")
+    print(f"  最大值: {depth_conf.max():.6f}")
+    print(f"  平均值: {depth_conf.mean():.6f}")
+    print(f"  25%分位数: {np.percentile(depth_conf, 25):.6f}")
+    print(f"  75%分位数: {np.percentile(depth_conf, 75):.6f}")
     
     # 获取图片文件名
     image_files = sorted(glob.glob(os.path.join(image_folder, "*")))
@@ -92,8 +101,15 @@ def save_colmap_reconstruction(pred_dict: dict, image_folder: str, colmap_path: 
     # 创建像素坐标网格 (S, H, W, 3), 包含x, y坐标和帧索引
     points_xyf = create_pixel_coordinate_grid(num_frames, height, width)
     
-    # 应用置信度掩码
-    conf_mask = depth_conf >= conf_thres_value
+    # === 修改：使用百分位数阈值，与viser保持一致 ===
+    # 计算百分位数阈值
+    conf_threshold_percentile = np.percentile(depth_conf, conf_thres_value)
+    print(f"计算得到的百分位数阈值: {conf_threshold_percentile:.6f}")
+    
+    # 应用置信度掩码（使用百分位数阈值）
+    conf_mask = (depth_conf >= conf_threshold_percentile) & (depth_conf > 1e-5)
+    print(f"通过置信度过滤的点数: {conf_mask.sum()}")
+    
     # 最多写入max_points_for_colmap个3D点到colmap重建对象
     conf_mask = randomly_limit_trues(conf_mask, max_points_for_colmap)
     

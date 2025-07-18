@@ -57,8 +57,11 @@ def parse_args():
         "--fine_tracking", action="store_true", default=True, help="Use fine tracking (slower but more accurate)"
     )
     parser.add_argument(
-        "--conf_thres_value", type=float, default=5.0, help="Confidence threshold value for depth filtering (wo BA)"
+        "--conf_thres_value", type=float, default=0.01, help="Confidence threshold value for depth filtering (wo BA)"
     )
+    parser.add_argument(
+    "--conf_threshold", type=float, default=70.0, help="Initial percentage of low-confidence points to filter out"
+)
     return parser.parse_args()
 
 
@@ -194,12 +197,15 @@ def demo_fn(args):
         reconstruction_resolution = img_load_resolution
     else:
         conf_thres_value = args.conf_thres_value
-        max_points_for_colmap = 100000  # randomly sample 3D points
+        max_points_for_colmap = 100000000  # randomly sample 3D points
         shared_camera = False  # in the feedforward manner, we do not support shared camera
         camera_type = "PINHOLE"  # in the feedforward manner, we only support PINHOLE camera
 
         image_size = np.array([vggt_fixed_resolution, vggt_fixed_resolution])
         num_frames, height, width, _ = points_3d.shape
+        print("number of frames: ", num_frames)
+        print("height: ", height)
+        print("width: ", width)
 
         points_rgb = F.interpolate(
             images, size=(vggt_fixed_resolution, vggt_fixed_resolution), mode="bilinear", align_corners=False
@@ -209,16 +215,21 @@ def demo_fn(args):
 
         # (S, H, W, 3), with x, y coordinates and frame indices
         points_xyf = create_pixel_coordinate_grid(num_frames, height, width)
-
-        conf_mask = depth_conf >= conf_thres_value
+        print("number of points: ", len(points_xyf))
+        init_threshold_val = np.percentile(depth_conf, args.conf_threshold)
+        conf_mask = (depth_conf >= init_threshold_val) & (depth_conf > 0.1)
+        # conf_mask = depth_conf >= conf_thres_value
+        print("number of points after conf_mask: ", len(conf_mask))
         # at most writing 100000 3d points to colmap reconstruction object
         conf_mask = randomly_limit_trues(conf_mask, max_points_for_colmap)
-
+        print("number of points after randomly_limit_trues: ", len(conf_mask))
+        print("number of points before conf_mask: ", len(points_3d))
         points_3d = points_3d[conf_mask]
         points_xyf = points_xyf[conf_mask]
         points_rgb = points_rgb[conf_mask]
 
         print("Converting to COLMAP format")
+        print("number of points: ", len(points_3d))
         reconstruction = batch_np_matrix_to_pycolmap_wo_track(
             points_3d,
             points_xyf,
